@@ -111,8 +111,10 @@ class TempestContext(context.VerifierContext):
         self.clients.clear()
 
         self._cleanup_tempest_roles()
-        self._cleanup_images()
-        self._cleanup_flavors()
+        if "glance" in self.available_services:
+            self._cleanup_images()
+        if "nova" in self.available_services:
+            self._cleanup_flavors()
         if "neutron" in self.available_services:
             self._cleanup_network_resources()
 

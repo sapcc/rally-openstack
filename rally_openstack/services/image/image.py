@@ -39,8 +39,11 @@ class RemovePropsException(exceptions.RallyException):
 class Image(service.UnifiedService):
     @classmethod
     def is_applicable(cls, clients):
-        cloud_version = str(clients.glance().version).split(".")[0]
-        return cloud_version == cls._meta_get("impl")._meta_get("version")
+        try:
+            cloud_version = str(clients.glance().version).split(".")[0]
+            return cloud_version == cls._meta_get("impl")._meta_get("version")
+        except Exception as e:
+            return False
 
     @service.should_be_overridden
     def create_image(self, image_name=None, container_format=None,
