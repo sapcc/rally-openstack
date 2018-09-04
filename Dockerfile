@@ -1,8 +1,22 @@
-FROM ubuntu:16.04
+ARG FROM=ubuntu:xenial
+FROM ${FROM}
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 RUN sed -i s/^deb-src.*// /etc/apt/sources.list
 
-RUN apt-get update && apt-get install --yes sudo python python-pip vim git-core && \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates wget curl && \
+    wget -O /usr/local/share/ca-certificates/SAP_Global_Root_CA.crt http://aia.pki.co.sap.com/aia/SAP%20Global%20Root%20CA.crt && \
+    wget -O /usr/local/share/ca-certificates/SAP_Global_Sub_CA_02.crt http://aia.pki.co.sap.com/aia/SAP%20Global%20Sub%20CA%2002.crt && \
+    wget -O /usr/local/share/ca-certificates/SAP_Global_Sub_CA_04.crt http://aia.pki.co.sap.com/aia/SAP%20Global%20Sub%20CA%2004.crt && \
+    wget -O /usr/local/share/ca-certificates/SAP_Global_Sub_CA_05.crt http://aia.pki.co.sap.com/aia/SAP%20Global%20Sub%20CA%2005.crt && \
+    wget -O /usr/local/share/ca-certificates/SAPNetCA_G2.crt http://aia.pki.co.sap.com/aia/SAPNetCA_G2.crt && \
+    update-ca-certificates && \
+    curl -sLo /usr/local/bin/kubernetes-entrypoint https://github.wdf.sap.corp/d062284/k8s-entrypoint-build/releases/download/f52d105/kubernetes-entrypoint && \
+    chmod +x /usr/local/bin/kubernetes-entrypoint
+
+RUN apt-get install --yes sudo python python-pip vim git-core && \
     pip install --upgrade pip && \
     useradd -u 65500 -m rally && \
     usermod -aG sudo rally && \
