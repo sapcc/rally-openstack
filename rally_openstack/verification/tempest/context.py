@@ -67,19 +67,21 @@ class TempestContext(context.VerifierContext):
                                os.path.join(self.data_dir, "tempest.log"))
         self._configure_option("oslo_concurrency", "lock_path",
                                os.path.join(self.data_dir, "lock_files"))
-        self._configure_option("scenario", "img_dir", self.data_dir)
-        self._configure_option("scenario", "img_file", self.image_name,
-                               helper_method=self._download_image)
-        self._configure_option("compute", "image_ref",
-                               helper_method=self._discover_or_create_image)
-        self._configure_option("compute", "image_ref_alt",
-                               helper_method=self._discover_or_create_image)
-        self._configure_option("compute", "flavor_ref",
-                               helper_method=self._discover_or_create_flavor,
-                               flv_ram=conf.CONF.openstack.flavor_ref_ram)
-        self._configure_option("compute", "flavor_ref_alt",
-                               helper_method=self._discover_or_create_flavor,
-                               flv_ram=conf.CONF.openstack.flavor_ref_alt_ram)
+        if "glance" in self.available_services:
+            self._configure_option("scenario", "img_dir", self.data_dir)
+            self._configure_option("scenario", "img_file", self.image_name,
+                                   helper_method=self._download_image)
+        if "compute" in self.available_services:
+            self._configure_option("compute", "image_ref",
+                                   helper_method=self._discover_or_create_image)
+            self._configure_option("compute", "image_ref_alt",
+                                   helper_method=self._discover_or_create_image)
+            self._configure_option("compute", "flavor_ref",
+                                   helper_method=self._discover_or_create_flavor,
+                                   flv_ram=conf.CONF.openstack.flavor_ref_ram)
+            self._configure_option("compute", "flavor_ref_alt",
+                                   helper_method=self._discover_or_create_flavor,
+                                   flv_ram=conf.CONF.openstack.flavor_ref_alt_ram)
         if "neutron" in self.available_services:
             neutronclient = self.clients.neutron()
             if neutronclient.list_networks(shared=True)["networks"]:
