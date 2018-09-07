@@ -51,11 +51,6 @@ class DeploymentTestCase(unittest.TestCase):
               "--filename /tmp/.tmp.deployment")
         self.assertIn("t_create_file", rally("deployment list"))
 
-    def test_create_empty(self):
-        rally = utils.Rally()
-        rally("deployment create --name t_empty")
-        self.assertEqual("{}", rally("deployment config").strip())
-
     def test_destroy(self):
         rally = utils.Rally()
         rally.env.update(TEST_ENV)
@@ -91,17 +86,8 @@ class DeploymentTestCase(unittest.TestCase):
             rally("--debug deployment check")
         except utils.RallyCliError as e:
             self.assertIn(
-                "[-] Unable to authenticate for user %(username)s in"
-                " project %(tenant_name)s" %
-                {"username": TEST_ENV["OS_USERNAME"],
-                 "tenant_name": TEST_ENV["OS_TENANT_NAME"]},
-                str(e))
-            self.assertIn(
-                "AuthenticationFailed: Failed to authenticate to %(auth_url)s"
-                " for user '%(username)s' in project '%(tenant_name)s'" %
-                {"auth_url": TEST_ENV["OS_AUTH_URL"],
-                 "username": TEST_ENV["OS_USERNAME"],
-                 "tenant_name": TEST_ENV["OS_TENANT_NAME"]},
+                "AuthenticationFailed: Unable to establish connection to "
+                "%s" % TEST_ENV["OS_AUTH_URL"],
                 str(e))
         else:
             self.fail("rally deployment fails to raise error for wrong"
@@ -119,9 +105,6 @@ class DeploymentTestCase(unittest.TestCase):
         current_deployment = utils.get_global("RALLY_DEPLOYMENT",
                                               rally.env)
         self.assertEqual(uuid, current_deployment)
-
-    # TODO(andreykurilin): Do not forget to move thes tests while splitting
-    #   rally to main framework and openstack plugins
 
     def test_create_from_env_openstack_deployment(self):
         rally = utils.Rally()

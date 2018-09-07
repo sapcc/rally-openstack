@@ -14,7 +14,6 @@
 #    under the License.
 
 from rally.common import logging
-from rally_openstack import osclients
 
 LOG = logging.getLogger(__file__)
 
@@ -28,8 +27,9 @@ class OpenStackCredential(dict):
                  region_name=None, endpoint_type=None,
                  domain_name=None, endpoint=None, user_domain_name=None,
                  project_domain_name=None,
-                 https_insecure=False, https_cacert=None,
-                 profiler_hmac_key=None, profiler_conn_str=None, **kwargs):
+                 https_insecure=False, https_cacert=None, https_cert=None,
+                 profiler_hmac_key=None, profiler_conn_str=None,
+                 api_info=None, **kwargs):
         if kwargs:
             raise TypeError("%s" % kwargs)
 
@@ -49,8 +49,10 @@ class OpenStackCredential(dict):
             ("project_domain_name", project_domain_name),
             ("https_insecure", https_insecure),
             ("https_cacert", https_cacert),
+            ("https_cert", https_cert),
             ("profiler_hmac_key", profiler_hmac_key),
-            ("profiler_conn_str", profiler_conn_str)
+            ("profiler_conn_str", profiler_conn_str),
+            ("api_info", api_info or {})
         ])
 
         self._clients_cache = {}
@@ -60,36 +62,17 @@ class OpenStackCredential(dict):
         #   object as raw dict as soon as we clean over code.
         return self.get(attr, default)
 
-    # backward compatibility
-    @property
-    def insecure(self):
-        LOG.warning("Property 'insecure' is deprecated since Rally 0.10.0. "
-                    "Use 'https_insecure' instead.")
-        return self["https_insecure"]
-
-    # backward compatibility
-    @property
-    def cacert(self):
-        LOG.warning("Property 'cacert' is deprecated since Rally 0.10.0. "
-                    "Use 'https_cacert' instead.")
-        return self["https_cacert"]
-
     def to_dict(self):
         return dict(self)
-
-    def list_services(self):
-        LOG.warning("Method `list_services` of OpenStackCredentials is "
-                    "deprecated since Rally 0.11.0. Use osclients instead.")
-        return sorted([{"type": stype, "name": sname}
-                       for stype, sname in self.clients().services().items()],
-                      key=lambda s: s["name"])
-
-    # this method is mostly used by validation step. let's refactor it and
-    # deprecated this
-    def clients(self, api_info=None):
-        return osclients.Clients(self, api_info=api_info,
-                                 cache=self._clients_cache)
 
     def __deepcopy__(self, memodict=None):
         import copy
         return self.__class__(**copy.deepcopy(self.to_dict()))
+
+    # this method is mostly used by validation step. let's refactor it and
+    # deprecated this
+    def clients(self, api_info=None):
+        from rally_openstack import osclients
+
+        return osclients.Clients(self, api_info=api_info,
+                                 cache=self._clients_cache)

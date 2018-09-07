@@ -18,6 +18,7 @@ import jsonschema
 import mock
 from rally.env import env_mgr
 from rally.env import platform
+from rally import exceptions
 
 from rally_openstack.platforms import existing
 from tests.unit import test
@@ -73,6 +74,25 @@ class ExistingPlatformTestCase(PlatformBaseTestCase):
         result = platform.Platform.validate("existing@openstack", {},
                                             spec, spec["existing@openstack"])
         self.assertNotEqual([], result)
+
+    def test_validate_spec_schema_with_api_info(self):
+        spec = {
+            "existing@openstack": {
+                "auth_url": "url",
+                "admin": {
+                    "username": "admin",
+                    "password": "password123",
+                    "tenant_name": "admin"
+                },
+                "api_info": {
+                    "nova": {"version": 1},
+                    "cinder": {"version": 2, "service_type": "volumev2"}
+                }
+            }
+        }
+        result = platform.Platform.validate("existing@openstack", {},
+                                            spec, spec["existing@openstack"])
+        self.assertEqual([], result)
 
     def test_create_users_only(self):
 
@@ -154,8 +174,10 @@ class ExistingPlatformTestCase(PlatformBaseTestCase):
             "OS_INTERFACE": "publicURL",
             "OS_REGION_NAME": "Region1",
             "OS_CACERT": "Cacert",
+            "OS_CERT": "cert",
+            "OS_KEY": "key",
             "OS_INSECURE": True,
-            "OSPROFILER_HMAC_KEY": "key",
+            "OSPROFILER_HMAC_KEY": "hmackey",
             "OSPROFILER_CONN_STR": "https://example2.com",
         }
 
@@ -172,8 +194,10 @@ class ExistingPlatformTestCase(PlatformBaseTestCase):
                 "endpoint_type": "public",
                 "region_name": "Region1",
                 "https_cacert": "Cacert",
+                "https_cert": "cert",
+                "https_key": "key",
                 "https_insecure": True,
-                "profiler_hmac_key": "key",
+                "profiler_hmac_key": "hmackey",
                 "profiler_conn_str": "https://example2.com"
             }, result["spec"])
 
@@ -181,7 +205,7 @@ class ExistingPlatformTestCase(PlatformBaseTestCase):
         sys_env["OS_IDENTITY_API_VERSION"] = "3"
 
         result = existing.OpenStack.create_spec_from_sys_environ(sys_env)
-        print(json.dumps(result["spec"], indent=4))
+
         self.assertEqual(
             {
                 "admin": {
@@ -195,8 +219,10 @@ class ExistingPlatformTestCase(PlatformBaseTestCase):
                 "auth_url": "https://example.com",
                 "region_name": "Region1",
                 "https_cacert": "Cacert",
+                "https_cert": "cert",
+                "https_key": "key",
                 "https_insecure": True,
-                "profiler_hmac_key": "key",
+                "profiler_hmac_key": "hmackey",
                 "profiler_conn_str": "https://example2.com"
             }, result["spec"])
 
@@ -245,14 +271,27 @@ class ExistingPlatformTestCase(PlatformBaseTestCase):
         self._check_health_schema(result)
         self.assertEqual({"available": True}, result)
         mock_clients.assert_has_calls(
-            [mock.call(pdata["admin"]), mock.call().verified_keystone(),
-             mock.call(pdata["users"][0]), mock.call().keystone(),
-             mock.call(pdata["users"][1]), mock.call().keystone()])
+            [mock.call(pdata["users"][0]), mock.call().keystone(),
+             mock.call(pdata["users"][1]), mock.call().keystone(),
+             mock.call(pdata["admin"]), mock.call().verified_keystone()])
+
+    @mock.patch("rally_openstack.osclients.Clients")
+    def test_check_failed_with_native_rally_exc(self, mock_clients):
+        e = exceptions.RallyException("foo")
+        mock_clients.return_value.keystone.side_effect = e
+        pdata = {"admin": None,
+                 "users": [{"username": "balbab", "password": "12345"}]}
+        result = existing.OpenStack({}, platform_data=pdata).check_health()
+        self._check_health_schema(result)
+        self.assertEqual({"available": False, "message": e.format_message(),
+                          "traceback": mock.ANY},
+                         result)
 
     @mock.patch("rally_openstack.osclients.Clients")
     def test_check_failed_admin(self, mock_clients):
         mock_clients.return_value.verified_keystone.side_effect = Exception
-        pdata = {"admin": {"username": "balbab", "password": "12345"}}
+        pdata = {"admin": {"username": "balbab", "password": "12345"},
+                 "users": []}
         result = existing.OpenStack({}, platform_data=pdata).check_health()
         self._check_health_schema(result)
         self.assertEqual(

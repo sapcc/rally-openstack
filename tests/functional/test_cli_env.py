@@ -1,4 +1,4 @@
-# Copyright 2013: ITLook, Inc.
+# Copyright 2013: Mirantis Inc.
 # All Rights Reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,80 +13,111 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import json
-import os
-import tempfile
-
+import copy
 import unittest
 
 from tests.functional import utils
 
 
+TEST_ENV = {
+    "OS_USERNAME": "admin",
+    "OS_PASSWORD": "admin",
+    "OS_TENANT_NAME": "admin",
+    "OS_AUTH_URL": "http://fake/",
+}
+
+RALLY_OPTS = {
+    # speed up failures
+    "DEFAULT": {"openstack_client_http_timeout": 5}
+}
+
+
 class EnvTestCase(unittest.TestCase):
-
-    def test_create_no_spec(self):
+    def test_check_success(self):
         rally = utils.Rally()
-        rally("env create --name empty --description de")
-        self.assertIn("empty", rally("env list"))
-        env_data = rally("env show --json", getjson=True)
-        self.assertEqual("empty", env_data["name"])
-        self.assertEqual("de", env_data["description"])
-        self.assertEqual({}, env_data["extras"])
-        self.assertEqual({}, env_data["platforms"])
+        rally("env check")
 
-    def _create_spec(self, spec):
-        f = tempfile.NamedTemporaryFile(delete=False)
+    def test_check_wrong_url(self):
+        rally = utils.Rally(config_opts=RALLY_OPTS)
+        fake_spec = copy.deepcopy(rally.env_spec)
+        fake_spec["existing@openstack"]["auth_url"] = "http://example.com:5000"
+        spec = utils.JsonTempFile(fake_spec)
+        rally("env create --name t_create_env --spec %s" % spec.filename)
 
-        def unlink():
-            os.unlink(f.name)
+        try:
+            rally("env check")
+        except utils.RallyCliError as e:
+            output = e.output.split("\n")
+            line_template = "| :-(       | openstack | %s |"
+            err1 = "Unable to establish connection to http://example.com:5000"
+            err2 = "Request to http://example.com:5000 timed out"
+            if (line_template % err1 not in output
+                    and line_template % err2 not in output):
+                self.fail("The output of `env check` doesn't contain expected"
+                          " error. Output:\n" % e.output)
+        else:
+            self.fail("Check env command should fail!")
 
-        self.addCleanup(unlink)
+    def test_check_wrong_username(self):
+        rally = utils.Rally(config_opts=RALLY_OPTS)
+        fake_spec = copy.deepcopy(rally.env_spec)
+        fake_spec["existing@openstack"]["admin"]["username"] = "MASTER777"
+        spec = utils.JsonTempFile(fake_spec)
+        rally("env create --name t_create_env --spec %s" % spec.filename)
 
-        f.write(json.dumps(spec, indent=2))
-        f.close()
-        return f.name
+        try:
+            rally("env check")
+        except utils.RallyCliError as e:
+            line = ("| :-(       | openstack | Failed to authenticate to "
+                    "%s for user '%s' in project '%s': The request you have "
+                    "made requires authentication. |" %
+                    (fake_spec["existing@openstack"]["auth_url"],
+                     fake_spec["existing@openstack"]["admin"]["username"],
+                     fake_spec["existing@openstack"]["admin"]["project_name"]))
+            self.assertIn(line, e.output.split("\n"))
+        else:
+            self.fail("Check env command should fail!")
 
-    def test_create_check_info_destroy_delete_with_spec(self):
-        rally = utils.Rally(plugin_path="tests/functional/extra")
+    def test_check_wrong_password(self):
+        rally = utils.Rally(config_opts=RALLY_OPTS)
+        fake_spec = copy.deepcopy(rally.env_spec)
+        fake_spec["existing@openstack"]["admin"]["password"] = "MASTER777"
+        spec = utils.JsonTempFile(fake_spec)
+        rally("env create --name t_create_env --spec %s" % spec.filename)
 
-        spec = self._create_spec({"good@fake": {}})
-        rally("env create --name real --spec %s" % spec)
-        env = rally("env show --json", getjson=True)
-        self.assertIn("fake", env["platforms"])
+        try:
+            rally("env check")
+        except utils.RallyCliError as e:
+            line = ("| :-(       | openstack | Failed to authenticate to "
+                    "%s for user '%s' in project '%s': The request you have "
+                    "made requires authentication. |" %
+                    (fake_spec["existing@openstack"]["auth_url"],
+                     fake_spec["existing@openstack"]["admin"]["username"],
+                     fake_spec["existing@openstack"]["admin"]["project_name"]))
+            self.assertIn(line, e.output.split("\n"))
+        else:
+            self.fail("Check env command should fail!")
 
-        env_info = rally("env info --json", getjson=True)
-        self.assertEqual({"good@fake": {"info": {"a": 1}}}, env_info)
-
-        rally("env check --json")
-
-    def test_list_empty(self):
+    def test_create_from_sysenv(self):
         rally = utils.Rally()
-        # TODO(boris-42): Clean this up somehow
-        rally("env destroy MAIN")
-        rally("env delete MAIN")
-        self.assertEqual([], rally("env list --json", getjson=True))
-        self.assertIn("There are no environments", rally("env list"))
-
-    def test_list(self):
-        rally = utils.Rally()
-        envs = rally("env list --json", getjson=True)
-        self.assertEqual(1, len(envs))
-        self.assertEqual("MAIN", envs[0]["name"])
-        self.assertIn("MAIN", rally("env list"))
-
-    def test_use(self):
-
-        def show_helper():
-            return rally("env show --json", getjson=True)
-
-        rally = utils.Rally()
-        self.assertEqual("MAIN", show_helper()["name"])
-        empty_uuid = rally("env create --name empty --json",
-                           getjson=True)["uuid"]
-        self.assertEqual("empty", show_helper()["name"])
-        rally("env use MAIN")
-        self.assertEqual("MAIN", show_helper()["name"])
-        rally("env use %s" % empty_uuid)
-        self.assertEqual("empty", show_helper()["name"])
-        rally("env create --name empty2 --description de --no-use")
-        self.assertEqual("empty", show_helper()["name"])
+        rally.env.update(TEST_ENV)
+        rally("env create --name t_create_env --from-sysenv")
+        config = rally("env show --only-spec", getjson=True)
+        self.assertIn("existing@openstack", config)
+        self.assertEqual(TEST_ENV["OS_USERNAME"],
+                         config["existing@openstack"]["admin"]["username"])
+        self.assertEqual(TEST_ENV["OS_PASSWORD"],
+                         config["existing@openstack"]["admin"]["password"])
+        if "project_name" in config["existing@openstack"]["admin"]:
+            # keystone v3
+            self.assertEqual(
+                TEST_ENV["OS_TENANT_NAME"],
+                config["existing@openstack"]["admin"]["project_name"])
+        else:
+            # keystone v2
+            self.assertEqual(
+                TEST_ENV["OS_TENANT_NAME"],
+                config["existing@openstack"]["admin"]["tenant_name"])
+        self.assertEqual(
+            TEST_ENV["OS_AUTH_URL"],
+            config["existing@openstack"]["auth_url"])

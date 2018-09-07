@@ -39,22 +39,13 @@ class OpenStackCredentialTestCase(test.TestCase):
                           "endpoint_type": None,
                           "https_insecure": False,
                           "https_cacert": None,
+                          "https_cert": None,
                           "project_domain_name": None,
                           "user_domain_name": None,
                           "profiler_hmac_key": None,
-                          "profiler_conn_str": None},
+                          "profiler_conn_str": None,
+                          "api_info": {}},
                          self.credential.to_dict())
-
-    @mock.patch("rally_openstack.osclients.Clients")
-    def test_list_services(self, mock_clients):
-        mock_clients.return_value.services.return_value = {"compute": "nova",
-                                                           "volume": "cinder"}
-        result = self.credential.list_services()
-        mock_clients.assert_called_once_with(
-            self.credential, api_info=None, cache={})
-        mock_clients.return_value.services.assert_called_once_with()
-        self.assertEqual([{"name": "cinder", "type": "volume"},
-                          {"name": "nova", "type": "compute"}], result)
 
     @mock.patch("rally_openstack.osclients.Clients")
     def test_clients(self, mock_clients):

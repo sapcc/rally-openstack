@@ -28,12 +28,27 @@
     vars:
       tox_envlist: py35
 
+- job:
+    name: rally-tox-cover
+    parent: tox-cover
+    description: |
+      Run test for rally project.
+
+      Uses tox with the ``cover`` environment.
+    vars:
+      coverage_output_src: '{{ zuul.project.src_dir }}/cover/'
+      zuul_executor_dest: '{{ zuul.executor.log_root }}/coverage/'
+
 - project:
     check:
       jobs:
         - rally-tox-pep8
         - rally-tox-py27
         - rally-tox-py35
+        - rally-tox-py36
+        - rally-tox-py37
+        - rally-tox-cover
+        - rally-dsvm-tox-functional
         - rally-docker-check
         - rally-task-simple-job
         - rally-task-basic-with-existing-users:
@@ -42,7 +57,8 @@
         # NOTE(andreykurilin): this requires more thing to configure before
         #   launching.
         #- rally-task-designate
-        - rally-task-heat
+        - rally-task-heat:
+            voting: false
         - rally-task-ironic
         - rally-task-keystone-glance-swift
         - rally-task-load-balancing:
@@ -81,9 +97,13 @@
         - rally-tox-pep8
         - rally-tox-py27
         - rally-tox-py35
+        - rally-tox-py36
+        - rally-tox-py37
+        - rally-tox-cover
+        - rally-dsvm-tox-functional
         - rally-docker-check
         - rally-task-simple-job
-        - rally-task-heat
+        #- rally-task-heat
         - rally-task-ironic
         - rally-task-keystone-glance-swift
         - rally-task-mistral

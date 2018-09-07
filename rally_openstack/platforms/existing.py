@@ -33,6 +33,13 @@ class OpenStack(platform.Platform):
 
     It may be used to test any existing OpenStack API compatible cloud.
     """
+    VERSION_SCHEMA = {
+        "anyOf": [
+            {"type": "string", "description": "a string-like version."},
+            {"type": "number", "description": "a number-like version."}
+        ]
+    }
+
     CONFIG_SCHEMA = {
         "type": "object",
         "definitions": {
@@ -63,6 +70,21 @@ class OpenStack(platform.Platform):
                         "additionalProperties": False
                     }
                 ],
+            },
+            "api_info": {
+                "type": "object",
+                "patternProperties": {
+                    "^[a-z]+$": {
+                        "type": "object",
+                        "properties": {
+                            "version": VERSION_SCHEMA,
+                            "service_type": {"type": "string"}
+                        },
+                        "minProperties": 1,
+                        "additionalProperties": False
+                    }
+                },
+                "additionalProperties": False
             }
         },
         "properties": {
@@ -72,6 +94,8 @@ class OpenStack(platform.Platform):
             "endpoint_type": {"enum": ["public", "internal", "admin", None]},
             "https_insecure": {"type": "boolean"},
             "https_cacert": {"type": "string"},
+            "https_cert": {"type": "string"},
+            "https_key": {"type": "string"},
             "profiler_hmac_key": {"type": ["string", "null"]},
             "profiler_conn_str": {"type": ["string", "null"]},
             "admin": {"$ref": "#/definitions/user"},
@@ -79,7 +103,8 @@ class OpenStack(platform.Platform):
                 "type": "array",
                 "items": {"$ref": "#/definitions/user"},
                 "minItems": 1
-            }
+            },
+            "api_info": {"$ref": "#/definitions/api_info"}
         },
         "anyOf": [
             {
@@ -113,6 +138,11 @@ class OpenStack(platform.Platform):
             del new_data["endpoint"]
         admin = new_data.pop("admin", None)
         users = new_data.pop("users", [])
+        api_info = new_data.pop("api_info", None)
+
+        if new_data.get("https_cert") and new_data.get("https_key"):
+            new_data["https_cert"] = (new_data["https_cert"],
+                                      new_data.pop("https_key"))
 
         if admin:
             if "project_name" in admin:
@@ -126,7 +156,10 @@ class OpenStack(platform.Platform):
             user.update(new_data)
             for k, v in defaults.items():
                 user.setdefault(k, v)
-        return {"admin": admin, "users": users}, {}
+        platform_data = {"admin": admin, "users": users}
+        if api_info:
+            platform_data["api_info"] = api_info
+        return platform_data, {}
 
     def destroy(self):
         # NOTE(boris-42): No action need to be performed.
@@ -144,32 +177,42 @@ class OpenStack(platform.Platform):
 
     def check_health(self):
         """Check whatever platform is alive."""
-        if self.platform_data["admin"]:
-            try:
-                osclients.Clients(
-                    self.platform_data["admin"]).verified_keystone()
-            except Exception:
-                d = copy.deepcopy(self.platform_data["admin"])
-                d["password"] = "***"
-                return {
-                    "available": False,
-                    "message": (
-                        "Bad admin creds: \n%s"
-                        % json.dumps(d, indent=2, sort_keys=True)),
-                    "traceback": traceback.format_exc()
-                }
 
-        for user in self.platform_data["users"]:
+        users_to_check = self.platform_data["users"]
+        if self.platform_data["admin"]:
+            users_to_check.append(self.platform_data["admin"])
+
+        for user in users_to_check:
             try:
-                osclients.Clients(user).keystone()
+                if self.platform_data["admin"] == user:
+                    osclients.Clients(user).verified_keystone()
+                else:
+                    osclients.Clients(user).keystone()
+            except osclients.exceptions.RallyException as e:
+                # all rally native exceptions should provide user-friendly
+                # messages
+                return {"available": False, "message": e.format_message(),
+                        # traceback is redundant here. Remove as soon as min
+                        #   required rally version will be updated
+                        #   More details here:
+                        #       https://review.openstack.org/597197
+                        "traceback": traceback.format_exc()}
             except Exception:
                 d = copy.deepcopy(user)
                 d["password"] = "***"
+                if logging.is_debug():
+                    LOG.exception("Something unexpected had happened while "
+                                  "validating OpenStack credentials.")
+                if self.platform_data["admin"] == user:
+                    user_role = "admin"
+                else:
+                    user_role = "user"
                 return {
                     "available": False,
                     "message": (
-                        "Bad user creds: \n%s"
-                        % json.dumps(d, indent=2, sort_keys=True)),
+                        "Bad %s creds: \n%s"
+                        % (user_role,
+                           json.dumps(d, indent=2, sort_keys=True))),
                     "traceback": traceback.format_exc()
                 }
 
@@ -230,6 +273,8 @@ class OpenStack(platform.Platform):
             "endpoint_type": endpoint_type,
             "region_name": sys_environ.get("OS_REGION_NAME", ""),
             "https_cacert": sys_environ.get("OS_CACERT", ""),
+            "https_cert": sys_environ.get("OS_CERT", ""),
+            "https_key": sys_environ.get("OS_KEY", ""),
             "https_insecure": strutils.bool_from_string(
                 sys_environ.get("OS_INSECURE")),
             "profiler_hmac_key": sys_environ.get("OSPROFILER_HMAC_KEY"),

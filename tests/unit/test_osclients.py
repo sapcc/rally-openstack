@@ -18,7 +18,6 @@ import mock
 
 from rally.common import cfg
 from rally import exceptions
-from rally import osclients as deprecated_osclients  # noqa
 
 from rally_openstack import consts
 from rally_openstack import credential as oscredential
@@ -86,12 +85,13 @@ class OSClientTestCase(test.TestCase, OSClientTestCaseUtils):
     def test_choose_service_type(self):
         default_service_type = "default_service_type"
 
-        @osclients.configure("test_choose_service_type",
+        @osclients.configure(self.id(),
                              default_service_type=default_service_type)
         class FakeClient(osclients.OSClient):
             create_client = mock.MagicMock()
 
-        fake_client = FakeClient(mock.MagicMock(), {}, {})
+        fake_client = FakeClient({"auth_url": "url", "username": "user",
+                                  "password": "pass"}, {}, {})
         self.assertEqual(default_service_type,
                          fake_client.choose_service_type())
         self.assertEqual("foo",
@@ -123,40 +123,33 @@ class OSClientTestCase(test.TestCase, OSClientTestCaseUtils):
         mock_url_for.assert_called_once_with(**call_args)
         mock_choose_service_type.assert_called_once_with(service_type)
 
-    @mock.patch("%s.Keystone.get_session" % PATH)
-    def test__get_session(self, mock_keystone_get_session):
-        osclient = osclients.OSClient(None, None, None)
-        auth_url = "auth_url"
-        version = "version"
-        import warnings
-        with mock.patch.object(warnings, "warn") as mock_warn:
-            self.assertEqual(mock_keystone_get_session.return_value,
-                             osclient._get_session(auth_url, version))
-            self.assertFalse(mock_warn.called)
-        mock_keystone_get_session.assert_called_once_with(version)
-
 
 class CachedTestCase(test.TestCase):
 
     def test_cached(self):
-        clients = osclients.Clients(mock.MagicMock())
-        client_name = "CachedTestCase.test_cached"
-        fake_client = osclients.configure(client_name)(osclients.OSClient)(
-            clients.credential, clients.api_info, clients.cache)
+        clients = osclients.Clients({"auth_url": "url", "username": "user",
+                                     "password": "pass"})
+
+        @osclients.configure(self.id())
+        class SomeClient(osclients.OSClient):
+            pass
+
+        fake_client = SomeClient(clients.credential, clients.api_info,
+                                 clients.cache)
         fake_client.create_client = mock.MagicMock()
 
         self.assertEqual({}, clients.cache)
         fake_client()
         self.assertEqual(
-            {client_name: fake_client.create_client.return_value},
+            {self.id(): fake_client.create_client.return_value},
             clients.cache)
         fake_client.create_client.assert_called_once_with()
         fake_client()
         fake_client.create_client.assert_called_once_with()
         fake_client("2")
         self.assertEqual(
-            {client_name: fake_client.create_client.return_value,
-             "%s('2',)" % client_name: fake_client.create_client.return_value},
+            {self.id(): fake_client.create_client.return_value,
+             "%s('2',)" % self.id(): fake_client.create_client.return_value},
             clients.cache)
         clients.clear()
         self.assertEqual({}, clients.cache)
@@ -259,12 +252,12 @@ class TestCreateKeystoneClient(test.TestCase, OSClientTestCaseUtils):
                 domain_name=None, project_domain_name=None,
                 user_domain_name=None)
         self.ksa_session.Session.assert_has_calls(
-            [mock.call(timeout=180.0, verify=True),
+            [mock.call(timeout=180.0, verify=True, cert=None),
              mock.call(auth=self.ksa_identity_plugin, timeout=180.0,
-                       verify=True)])
+                       verify=True, cert=None)])
 
     def test_keystone_property(self):
-        keystone = osclients.Keystone(None, None, None)
+        keystone = osclients.Keystone(self.credential, None, None)
         self.assertRaises(exceptions.RallyException, lambda: keystone.keystone)
 
     @mock.patch("%s.Keystone.get_session" % PATH)
@@ -273,7 +266,7 @@ class TestCreateKeystoneClient(test.TestCase, OSClientTestCaseUtils):
         auth_plugin = mock.MagicMock()
         mock_keystone_get_session.return_value = (session, auth_plugin)
         cache = {}
-        keystone = osclients.Keystone(None, None, cache)
+        keystone = osclients.Keystone(self.credential, None, cache)
 
         self.assertEqual(auth_plugin.get_access.return_value,
                          keystone.auth_ref)
@@ -284,38 +277,123 @@ class TestCreateKeystoneClient(test.TestCase, OSClientTestCaseUtils):
         keystone.auth_ref
         mock_keystone_get_session.assert_called_once_with()
 
-    @mock.patch("keystoneauth1.identity.base.BaseIdentityPlugin.get_access")
-    def test_auth_ref_fails(self, mock_get_access):
-        mock_get_access.side_effect = Exception
+    @mock.patch("%s.LOG.exception" % PATH)
+    @mock.patch("%s.logging.is_debug" % PATH)
+    def test_auth_ref_fails(self, mock_is_debug, mock_log_exception):
+        mock_is_debug.return_value = False
         keystone = osclients.Keystone(self.credential, {}, {})
+        session = mock.Mock()
+        auth_plugin = mock.Mock()
+        auth_plugin.get_access.side_effect = Exception
+        keystone.get_session = mock.Mock(return_value=(session, auth_plugin))
 
-        try:
-            keystone.auth_ref
-        except exceptions.AuthenticationFailed:
-            pass
-        else:
-            self.fail("keystone.auth_ref didn't raise"
-                      " exceptions.AuthenticationFailed")
+        self.assertRaises(osclients.AuthenticationFailed,
+                          lambda: keystone.auth_ref)
+
+        self.assertFalse(mock_log_exception.called)
+        mock_is_debug.assert_called_once_with()
+        auth_plugin.get_access.assert_called_once_with(session)
 
     @mock.patch("%s.LOG.exception" % PATH)
     @mock.patch("%s.logging.is_debug" % PATH)
-    @mock.patch("keystoneauth1.identity.base.BaseIdentityPlugin.get_access")
-    def test_auth_ref_debug(self, mock_get_access,
-                            mock_is_debug, mock_log_exception):
+    def test_auth_ref_fails_debug(self, mock_is_debug, mock_log_exception):
         mock_is_debug.return_value = True
-        mock_get_access.side_effect = Exception
         keystone = osclients.Keystone(self.credential, {}, {})
+        session = mock.Mock()
+        auth_plugin = mock.Mock()
+        auth_plugin.get_access.side_effect = Exception
+        keystone.get_session = mock.Mock(return_value=(session, auth_plugin))
 
-        try:
-            keystone.auth_ref
-        except exceptions.AuthenticationFailed:
-            pass
-        else:
-            self.fail("keystone.auth_ref didn't raise"
-                      " exceptions.AuthenticationFailed")
+        self.assertRaises(osclients.AuthenticationFailed,
+                          lambda: keystone.auth_ref)
 
         mock_log_exception.assert_called_once_with(mock.ANY)
         mock_is_debug.assert_called_once_with()
+        auth_plugin.get_access.assert_called_once_with(session)
+
+    @mock.patch("%s.LOG.exception" % PATH)
+    @mock.patch("%s.logging.is_debug" % PATH)
+    def test_auth_ref_fails_debug_with_native_keystone_error(
+            self, mock_is_debug, mock_log_exception):
+        from keystoneauth1 import exceptions as ks_exc
+
+        mock_is_debug.return_value = True
+        keystone = osclients.Keystone(self.credential, {}, {})
+        session = mock.Mock()
+        auth_plugin = mock.Mock()
+        auth_plugin.get_access.side_effect = ks_exc.ConnectFailure("foo")
+        keystone.get_session = mock.Mock(return_value=(session, auth_plugin))
+
+        self.assertRaises(osclients.AuthenticationFailed,
+                          lambda: keystone.auth_ref)
+
+        self.assertFalse(mock_log_exception.called)
+        mock_is_debug.assert_called_once_with()
+        auth_plugin.get_access.assert_called_once_with(session)
+
+    def test_authentication_failed_exception(self):
+        from keystoneauth1 import exceptions as ks_exc
+
+        original_e = KeyError("Oops")
+        e = osclients.AuthenticationFailed(
+            url="https://example.com", username="foo", project="project",
+            error=original_e
+        )
+        self.assertEqual(
+            "Failed to authenticate to https://example.com for user 'foo' in "
+            "project 'project': [KeyError] 'Oops'",
+            e.format_message())
+
+        original_e = ks_exc.Unauthorized("The request you have made requires "
+                                         "authentication.", request_id="ID")
+        e = osclients.AuthenticationFailed(
+            url="https://example.com", username="foo", project="project",
+            error=original_e
+        )
+        self.assertEqual(
+            "Failed to authenticate to https://example.com for user 'foo' in "
+            "project 'project': The request you have made requires "
+            "authentication.",
+            e.format_message())
+
+        original_e = ks_exc.ConnectionError("Some user-friendly native error")
+        e = osclients.AuthenticationFailed(
+            url="https://example.com", username="foo", project="project",
+            error=original_e
+        )
+        self.assertEqual("Some user-friendly native error",
+                         e.format_message())
+
+        original_e = ks_exc.ConnectionError(
+            "Unable to establish connection to https://example.com:500: "
+            "HTTPSConnectionPool(host='example.com', port=500): Max retries "
+            "exceeded with url: / (Caused by NewConnectionError('<urllib3."
+            "connection.VerifiedHTTPSConnection object at 0x7fb87a48e510>: "
+            "Failed to establish a new connection: [Errno 101] Network "
+            "is unreachable")
+        e = osclients.AuthenticationFailed(
+            url="https://example.com", username="foo", project="project",
+            error=original_e
+        )
+        self.assertEqual(
+            "Unable to establish connection to https://example.com:500",
+            e.format_message())
+
+        original_e = ks_exc.ConnectionError(
+            "Unable to establish connection to https://example.com:500: "
+            # another pool class
+            "HTTPConnectionPool(host='example.com', port=500): Max retries "
+            "exceeded with url: / (Caused by NewConnectionError('<urllib3."
+            "connection.VerifiedHTTPSConnection object at 0x7fb87a48e510>: "
+            "Failed to establish a new connection: [Errno 101] Network "
+            "is unreachable")
+        e = osclients.AuthenticationFailed(
+            url="https://example.com", username="foo", project="project",
+            error=original_e
+        )
+        self.assertEqual(
+            "Unable to establish connection to https://example.com:500",
+            e.format_message())
 
 
 @ddt.ddt
@@ -813,7 +891,7 @@ class OSClientsTestCase(test.TestCase):
                 "url": "http://fake.to:1/fake",
                 "aws_access_key_id": "fake_access",
                 "aws_secret_access_key": "fake_secret",
-                "is_secure": self.credential.insecure,
+                "is_secure": self.credential.https_insecure,
             }
             mock_boto.connect_ec2_endpoint.assert_called_once_with(**kw)
             self.assertEqual(fake_ec2, self.clients.cache["ec2"])

@@ -16,6 +16,61 @@ Changelog
 .. Release notes for existing releases are MUTABLE! If there is something that
    was missed or can be improved, feel free to change it!
 
+unreleased
+----------
+
+Added
+~~~~~
+
+* Support Python 3.7 environment.
+* ``https_cert`` and ``https_key`` options of the spec for
+  ``existing@openstack`` platform to represent client certificate bundle and
+  key files. Also the support for appropriate system environment variables (
+  ``OS_CERT``, ``OS_KEY``) is added.
+* Support client api option while deploying platform.
+
+Changed
+~~~~~~~
+
+* Our requirements are updated as like upper-constraints (the list of
+  suggested tested versions to use)
+* Error messages become more user-friendly in ``rally env check``.
+
+Removed
+~~~~~~~
+
+* Remove deprecated wrappers (rally_openstack.wrappers) and 
+  helpers (scenario utils) for keystone, cinder, glance 
+  services. The new service model should be used instead 
+  (see ``rally_openstack.services`` module for more details)
+  while developing custom plugins. All the inner plugins used
+  the new code for a long time.
+* Remove deprecated properties *insecure*, *cacert* (use *https_insecure* and
+  *https_cacert* properties instead) and method *list_services* (use
+  appropriate method of Clients object) of OpenStackCredentials object.
+
+Fixed
+~~~~~
+
+* Keypairs are now properly cleaned up after the execution of Magnum
+  tests.
+
+
+[1.2.0] - 2018-06-25
+--------------------
+
+Rally 1.0.0 has released. This is a major release which doesn't contain
+in-tree OpenStack plugins. Also, this release extends flexibility of
+validating required platforms which means that logic of required admin/users
+for the plugin can be implemented at **rally-openstack** side and this is
+done in rally-openstack 1.2.0
+
+Changed
+~~~~~~~
+
+Also, it is sad to mention, but due to OpenStack policies we need to stop
+duplicating release notes at ``git tag message``. At least for now.
+
 [1.1.0] - 2018-05-11
 --------------------
 

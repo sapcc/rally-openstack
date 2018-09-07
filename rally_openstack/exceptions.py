@@ -12,32 +12,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from rally.env import platform
+from rally import exceptions as rally_exceptions
+
+RallyException = rally_exceptions.RallyException
 
 
-@platform.configure(name="good", platform="fake")
-class GoodPlatform(platform.Platform):
-
-    CONFIG_SCHEMA = {}
-
-    def create(self):
-        return {}, {}
-
-    def destroy(self):
-        pass
-
-    def cleanup(self, task_uuid=None):
-        return {
-            "message": "Coming soon!",
-            "discovered": 0,
-            "deleted": 0,
-            "failed": 0,
-            "resources": {},
-            "errors": []
-        }
-
-    def check_health(self):
-        return {"available": True}
-
-    def info(self):
-        return {"info": {"a": 1}}
+class AuthenticationFailed(rally_exceptions.InvalidArgumentsException):
+    error_code = 220
+    msg_fmt = ("Failed to authenticate to %(url)s for user '%(username)s'"
+               " in project '%(project)s': %(etype)s: %(error)s")

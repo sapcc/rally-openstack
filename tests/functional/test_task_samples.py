@@ -16,7 +16,6 @@
 
 import copy
 import json
-import mock
 import os
 import re
 import traceback
@@ -24,13 +23,12 @@ import unittest
 
 import six
 
-import rally as rally_module
 from rally import api
 from rally.common import broker
 from rally.common import yamlutils as yaml
 from rally import plugins
-from rally.plugins.openstack.context.keystone import users
-from tests.check_samples import utils
+import rally_openstack as rally_openstack_module
+from tests.functional import utils
 
 
 class TestTaskSamples(unittest.TestCase):
@@ -56,8 +54,8 @@ class TestTaskSamples(unittest.TestCase):
 
     @plugins.ensure_plugins_are_loaded
     def test_task_samples_are_valid(self):
+        from rally_openstack.contexts.keystone import users
         rally = utils.Rally(force_new_db=True)
-
         # let's use pre-created users to make TestTaskSamples quicker
         rapi = api.API(config_file=rally.config_filename)
         deployment = rapi.deployment._get("MAIN")
@@ -94,33 +92,13 @@ class TestTaskSamples(unittest.TestCase):
         rally("deployment create --name MAIN --filename %s" % deployment_cfg,
               write_report=False)
 
-        # NOTE(andreykurilin): mock building credential to share one cache of
-        #   clients(it will allow to avoid hundreds of redundant
-        #   authentications) between validations of different samples
-        deployment = rapi.deployment._get("MAIN")
-        original_get_credentials_for = deployment.get_credentials_for
-        creds_cache = {}
-
-        def get_credentials_for(platform):
-            if platform not in creds_cache:
-                creds_cache[platform] = original_get_credentials_for(
-                    platform)
-            return creds_cache[platform]
-
-        deployment.get_credentials_for = get_credentials_for
-
-        deployment_patcher = mock.patch("rally.api.objects.Deployment.get")
-        m_deployment = deployment_patcher.start()
-        m_deployment.return_value = deployment
-        self.addCleanup(deployment_patcher.stop)
-
         # store all failures and print them at once
         failed_samples = {}
 
         def publisher(queue):
             """List all samples and render task configs"""
             samples_path = os.path.join(
-                os.path.dirname(rally_module.__file__), os.pardir,
+                os.path.dirname(rally_openstack_module.__file__), os.pardir,
                 "samples", "tasks")
 
             for dirname, dirnames, filenames in os.walk(samples_path):

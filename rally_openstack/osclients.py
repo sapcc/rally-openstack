@@ -20,15 +20,59 @@ from rally.cli import envutils
 from rally.common import cfg
 from rally.common import logging
 from rally.common.plugin import plugin
-from rally.common import utils
 from rally import exceptions
 from six.moves.urllib import parse
 
 from rally_openstack import consts
+from rally_openstack import credential as oscred
 
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
+
+
+class AuthenticationFailed(exceptions.AuthenticationFailed):
+    error_code = 220
+
+    msg_fmt = ("Failed to authenticate to %(url)s for user '%(username)s'"
+               " in project '%(project)s': %(message)s")
+    msg_fmt_2 = "%(message)s"
+
+    def __init__(self, error, url, username, project):
+        kwargs = {
+            "error": error,
+            "url": url,
+            "username": username,
+            "project": project
+        }
+        self._helpful_trace = False
+
+        from keystoneauth1 import exceptions as ks_exc
+
+        if isinstance(error, ks_exc.ConnectionError):
+            # this type of errors is general for all users no need to include
+            # username, project name. The original error message should be
+            # self-sufficient
+            self.msg_fmt = self.msg_fmt_2
+            message = error.message
+            if message.startswith("Unable to establish connection to"):
+                # this message contains too much info.
+                if "Max retries exceeded with url" in message:
+                    if "HTTPConnectionPool" in message:
+                        splitter = ": HTTPConnectionPool"
+                    else:
+                        splitter = ": HTTPSConnectionPool"
+                    message = message.split(splitter, 1)[0]
+        elif isinstance(error, ks_exc.Unauthorized):
+            message = error.message.split(" (HTTP 401)", 1)[0]
+        else:
+            # something unexpected. include exception class as well.
+            self._helpful_trace = True
+            message = "[%s] %s" % (error.__class__.__name__, str(error))
+        super(AuthenticationFailed, self).__init__(message=message, **kwargs)
+
+    def is_trace_helpful(self):
+        return self._helpful_trace
 
 
 def configure(name, default_version=None, default_service_type=None,
@@ -61,13 +105,14 @@ def configure(name, default_version=None, default_service_type=None,
 
 @plugin.base()
 class OSClient(plugin.Plugin):
-    """Base class for openstack clients"""
+    """Base class for OpenStack clients"""
 
     def __init__(self, credential, api_info, cache_obj):
         self.credential = credential
-        if isinstance(self.credential, dict):
-            self.credential = utils.Struct(**self.credential)
-        self.api_info = api_info
+        if not isinstance(self.credential, oscred.OpenStackCredential):
+            self.credential = oscred.OpenStackCredential(**self.credential)
+        if api_info:
+            self.credential.api_info.update(api_info)
         self.cache = cache_obj
 
     def choose_version(self, version=None):
@@ -94,8 +139,8 @@ class OSClient(plugin.Plugin):
         # For those clients which doesn't accept string value(for example
         # zaqarclient), this method should be overridden.
         version = (version or
-                   self.api_info.get(self.get_name(), {}).get("version") or
-                   self._meta_get("default_version"))
+                   self.credential.api_info.get(self.get_name(), {}).get(
+                       "version") or self._meta_get("default_version"))
         if version is not None:
             version = str(version)
         return version
@@ -128,8 +173,8 @@ class OSClient(plugin.Plugin):
         service type from api_info(configured from a context) and default.
         """
         return (service_type or
-                self.api_info.get(self.get_name(), {}).get("service_type") or
-                self._meta_get("default_service_type"))
+                self.credential.api_info.get(self.get_name(), {}).get(
+                    "service_type") or self._meta_get("default_service_type"))
 
     @classmethod
     def is_service_type_configurable(cls):
@@ -140,15 +185,8 @@ class OSClient(plugin.Plugin):
 
     @property
     def keystone(self):
-        return OSClient.get("keystone")(self.credential, self.api_info,
+        return OSClient.get("keystone")(self.credential, None,
                                         self.cache)
-
-    def _get_session(self, auth_url=None, version=None):
-        LOG.warning(
-            "Method `rally.osclient.OSClient._get_session` is deprecated since"
-            " Rally 0.6.0. Use "
-            "`rally.osclient.OSClient.keystone.get_session` instead.")
-        return self.keystone.get_session(version)
 
     def _get_endpoint(self, service_type=None):
         kw = {"service_type": self.choose_service_type(service_type),
@@ -230,19 +268,21 @@ class Keystone(OSClient):
             if "keystone_auth_ref" not in self.cache:
                 sess, plugin = self.get_session()
                 self.cache["keystone_auth_ref"] = plugin.get_access(sess)
-        except Exception as e:
-            if logging.is_debug():
+        except Exception as original_e:
+            e = AuthenticationFailed(
+                error=original_e,
+                username=self.credential.username,
+                project=self.credential.tenant_name,
+                url=self.credential.auth_url
+            )
+            if logging.is_debug() and e.is_trace_helpful():
                 LOG.exception("Unable to authenticate for user"
                               " %(username)s in project"
                               " %(tenant_name)s" %
                               {"username": self.credential.username,
                                "tenant_name": self.credential.tenant_name})
-            raise exceptions.AuthenticationFailed(
-                username=self.credential.username,
-                project=self.credential.tenant_name,
-                url=self.credential.auth_url,
-                etype=e.__class__.__name__,
-                error=str(e))
+
+            raise e
         return self.cache["keystone_auth_ref"]
 
     def get_session(self, version=None):
@@ -271,13 +311,13 @@ class Keystone(OSClient):
                 temp_session = session.Session(
                     verify=(self.credential.https_cacert or
                             not self.credential.https_insecure),
+                    cert=self.credential.https_cert,
                     timeout=CONF.openstack_client_http_timeout)
                 version = str(discover.Discover(
                     temp_session,
                     password_args["auth_url"]).version_data()[0]["version"][0])
 
-            if "v2.0" not in password_args["auth_url"] and (
-                    version != "2"):
+            if "v2.0" not in password_args["auth_url"] and version != "2":
                 password_args.update({
                     "user_domain_name": self.credential.user_domain_name,
                     "domain_name": self.credential.domain_name,
@@ -288,6 +328,7 @@ class Keystone(OSClient):
                 auth=identity_plugin,
                 verify=(self.credential.https_cacert or
                         not self.credential.https_insecure),
+                cert=self.credential.https_cert,
                 timeout=CONF.openstack_client_http_timeout)
             self.cache[key] = (sess, identity_plugin)
         return self.cache[key]
