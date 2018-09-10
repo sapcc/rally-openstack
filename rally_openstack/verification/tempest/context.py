@@ -44,6 +44,7 @@ class TempestContext(context.VerifierContext):
         creds = self.verifier.deployment.get_credentials_for("openstack")
         self.clients = creds["admin"].clients()
         self.available_services = self.clients.services().values()
+        self.enabled_services = []
 
         self.conf = configparser.ConfigParser()
         self.conf_path = self.verifier.manager.configfile
@@ -59,6 +60,23 @@ class TempestContext(context.VerifierContext):
     def setup(self):
         self.conf.read(self.conf_path)
 
+        # CCloud: allow an override of enabled services
+        services = ["cinder", "glance", "heat", "ironic", "neutron", "nova",
+                    "sahara", "swift"]
+
+        if self.conf.has_section("service_available"):
+            defaults = self.conf.defaults().keys()
+            for service in self.conf.options("service_available"):
+                if service in defaults:
+                    continue
+                enabled = self.conf.getboolean("service_available", service)
+                if enabled and service in self.available_services:
+                    self.enabled_services.append(service)
+        else:
+            for service in self.available_services:
+                if service in services:
+                    self.enabled_services.append(service)
+
         utils.create_dir(self.data_dir)
 
         self._create_tempest_roles()
@@ -67,11 +85,11 @@ class TempestContext(context.VerifierContext):
                                os.path.join(self.data_dir, "tempest.log"))
         self._configure_option("oslo_concurrency", "lock_path",
                                os.path.join(self.data_dir, "lock_files"))
-        if "glance" in self.available_services:
+        if "glance" in self.enabled_services:
             self._configure_option("scenario", "img_dir", self.data_dir)
             self._configure_option("scenario", "img_file", self.image_name,
                                    helper_method=self._download_image)
-        if "compute" in self.available_services:
+        if "compute" in self.enabled_services:
             self._configure_option("compute", "image_ref",
                                    helper_method=self._discover_or_create_image)
             self._configure_option("compute", "image_ref_alt",
@@ -82,7 +100,7 @@ class TempestContext(context.VerifierContext):
             self._configure_option("compute", "flavor_ref_alt",
                                    helper_method=self._discover_or_create_flavor,
                                    flv_ram=conf.CONF.openstack.flavor_ref_alt_ram)
-        if "neutron" in self.available_services:
+        if "neutron" in self.enabled_services:
             neutronclient = self.clients.neutron()
             if neutronclient.list_networks(shared=True)["networks"]:
                 # If the OpenStack cloud has some shared networks, we will
@@ -97,7 +115,7 @@ class TempestContext(context.VerifierContext):
                 self._configure_option(
                     "compute", "fixed_network_name",
                     helper_method=self._create_network_resources)
-        if "heat" in self.available_services:
+        if "heat" in self.enabled_services:
             self._configure_option(
                 "orchestration", "instance_type",
                 helper_method=self._discover_or_create_flavor,
@@ -125,10 +143,13 @@ class TempestContext(context.VerifierContext):
 
     def _create_tempest_roles(self):
         keystoneclient = self.clients.verified_keystone()
-        roles = [conf.CONF.openstack.swift_operator_role,
-                 conf.CONF.openstack.swift_reseller_admin_role,
-                 conf.CONF.openstack.heat_stack_owner_role,
-                 conf.CONF.openstack.heat_stack_user_role]
+        roles = []
+
+        if "swift" in self.enabled_services:
+            roles.append([conf.CONF.openstack.swift_operator_role, conf.CONF.openstack.swift_reseller_admin_role])
+        if "heat" in self.enabled_services:
+            roles.append([conf.CONF.openstack.heat_stack_owner_role, conf.CONF.openstack.heat_stack_user_role])
+
         existing_roles = set(role.name for role in keystoneclient.roles.list())
 
         for role in roles:

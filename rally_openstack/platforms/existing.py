@@ -61,12 +61,20 @@ class OpenStack(platform.Platform):
                         "properties": {
                             "username": {"type": "string"},
                             "password": {"type": "string"},
-                            "project_name": {"type": "string"},
-                            "domain_name": {"type": "string"},
+                            "project_name": {"type": ["string", "null"]},
+                            "domain_name": {"type": ["string", "null"]},
                             "user_domain_name": {"type": "string"},
-                            "project_domain_name": {"type": "string"},
+                            "project_domain_name": {"type": ["string", "null"]},
                         },
-                        "required": ["username", "password", "project_name"],
+                        "required": ["username", "password"],
+                        "anyOf": [
+                            {
+                                "required": ["domain_name"],
+                            },
+                            {
+                                "required": ["project_name", "project_domain_name"],
+                            }
+                        ],
                         "additionalProperties": False
                     }
                 ],
@@ -253,11 +261,6 @@ class OpenStack(platform.Platform):
                                missing_env_vars}
         tenant_name = sys_environ.get("OS_PROJECT_NAME",
                                       sys_environ.get("OS_TENANT_NAME"))
-        if tenant_name is None:
-            return {"available": False,
-                    "message": "One of OS_PROJECT_NAME or OS_TENANT_NAME "
-                               "should be specified."}
-
         endpoint_type = sys_environ.get("OS_ENDPOINT_TYPE",
                                         sys_environ.get("OS_INTERFACE"))
         if endpoint_type and "URL" in endpoint_type:
@@ -283,15 +286,30 @@ class OpenStack(platform.Platform):
 
         user_domain_name = sys_environ.get("OS_USER_DOMAIN_NAME")
         project_domain_name = sys_environ.get("OS_PROJECT_DOMAIN_NAME")
+        domain_name = sys_environ.get("OS_DOMAIN_NAME")
         identity_api_version = sys_environ.get(
             "OS_IDENTITY_API_VERSION", sys_environ.get("IDENTITY_API_VERSION"))
+
         if (identity_api_version == "3" or
                 (identity_api_version is None and
-                 (user_domain_name or project_domain_name))):
+                 (user_domain_name or project_domain_name or domain_name))):
+            if project_domain_name is None and domain_name is None:
+                return {"available": False,
+                        "message": "One of OS_PROJECT_NAME/OS_PROJECT_DOMAIN_NAME or OS_DOMAIN_NAME "
+                                   "should be specified."}
+
             # it is Keystone v3 and it has another config scheme
-            spec["admin"]["project_name"] = spec["admin"].pop("tenant_name")
             spec["admin"]["user_domain_name"] = user_domain_name or "Default"
-            project_domain_name = project_domain_name or "Default"
-            spec["admin"]["project_domain_name"] = project_domain_name
+            if domain_name:
+                spec["admin"]["domain_name"] = domain_name
+            else:
+                spec["admin"]["project_name"] = spec["admin"].pop("tenant_name")
+                project_domain_name = project_domain_name or "Default"
+                spec["admin"]["project_domain_name"] = project_domain_name
+        else:
+            if tenant_name is None:
+                return {"available": False,
+                        "message": "One of OS_PROJECT_NAME or OS_TENANT_NAME "
+                                   "should be specified."}
 
         return {"spec": spec, "available": True, "message": "Available"}

@@ -866,6 +866,7 @@ class Clients(object):
             username=creds["admin"]["username"],
             password=creds["admin"]["password"],
             tenant_name=creds["admin"]["tenant_name"],
+            domain_name=creds["admin"]["domain_name"],
             endpoint_type=creds["endpoint_type"],
             user_domain_name=creds["admin"].get("user_domain_name"),
             project_domain_name=creds["admin"].get("project_domain_name"),

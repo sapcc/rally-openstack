@@ -26,6 +26,9 @@ COPY . /home/rally/source
 COPY etc/motd /etc/motd
 WORKDIR /home/rally/source
 
+# Use the CCloud rally version that supports domain scoped admin tokens
+RUN pip install git+https://github.com/sapcc/rally.git@ccloud
+
 RUN pip install . --constraint upper-constraints.txt && \
     mkdir /etc/rally && \
     echo "[database]" > /etc/rally/rally.conf && \

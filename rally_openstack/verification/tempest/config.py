@@ -53,7 +53,9 @@ class TempestConfigfileManager(object):
                       self.credential.tenant_name)
         # Keystone v3 related parameter
         self.conf.set(section_name, "admin_domain_name",
-                      self.credential.user_domain_name or "Default")
+                      self.credential.domain_name)
+        if self.credential.domain_name:
+            self.conf.set(section_name, "admin_domain_scope", "True")
 
     # Sahara has two service types: 'data_processing' and 'data-processing'.
     # 'data_processing' is deprecated, but it can be used in previous OpenStack
