@@ -26,8 +26,18 @@ COPY . /home/rally/source
 COPY etc/motd /etc/motd
 WORKDIR /home/rally/source
 
+# add this and below command will run without cache
+ARG CACHEBUST=1
+
 # Use the CCloud rally version that supports domain scoped admin tokens
 RUN pip install git+https://github.com/sapcc/rally.git@ccloud
+
+# Install CCloud manila tempest plugin
+RUN git clone -b ccloud --single-branch https://github.com/sapcc/manila-tempest-plugin.git
+RUN pip install -e manila-tempest-plugin/ \
+  -c https://raw.githubusercontent.com/sapcc/requirements/stable/rocky-m3/upper-constraints.txt \
+  -r manila-tempest-plugin/requirements.txt \
+  -r manila-tempest-plugin/test-requirements.txt
 
 RUN pip install . --constraint upper-constraints.txt && \
     mkdir /etc/rally && \
