@@ -143,12 +143,12 @@ class TempestContext(context.VerifierContext):
 
     def _create_tempest_roles(self):
         keystoneclient = self.clients.verified_keystone()
-        roles = []
+        roles = {}
 
         if "swift" in self.enabled_services:
-            roles.append([conf.CONF.openstack.swift_operator_role, conf.CONF.openstack.swift_reseller_admin_role])
+            roles[conf.CONF.openstack.swift_operator_role] = conf.CONF.openstack.swift_reseller_admin_role
         if "heat" in self.enabled_services:
-            roles.append([conf.CONF.openstack.heat_stack_owner_role, conf.CONF.openstack.heat_stack_user_role])
+            roles[conf.CONF.openstack.heat_stack_owner_role] = conf.CONF.openstack.heat_stack_user_role
 
         existing_roles = set(role.name for role in keystoneclient.roles.list())
 
