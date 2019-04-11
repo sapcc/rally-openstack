@@ -105,7 +105,8 @@ class CreateAndGetVolume(cinder_utils.CinderBasic):
                     platform="openstack")
 class ListVolumes(cinder_utils.CinderBasic):
 
-    def run(self, detailed=True):
+    def run(self, detailed=True, search_opts=None, marker=None,
+            limit=None, sort_key=None, sort_dir=None, sort=None):
         """List all volumes.
 
         This simple scenario tests the cinder list command by listing
@@ -113,9 +114,22 @@ class ListVolumes(cinder_utils.CinderBasic):
 
         :param detailed: True if detailed information about volumes
                          should be listed
+        :param search_opts: Search options to filter out volumes.
+        :param marker: Begin returning volumes that appear later in the volume
+                       list than that represented by this volume id.(For V2 or
+                       higher)
+        :param limit: Maximum number of volumes to return.
+        :param sort_key: Key to be sorted; deprecated in kilo.(For V2 or
+                         higher)
+        :param sort_dir: Sort direction, should be 'desc' or 'asc'; deprecated
+                         in kilo. (For V2 or higher)
+        :param sort: Sort information
         """
 
-        self.cinder.list_volumes(detailed)
+        self.cinder.list_volumes(detailed, search_opts=search_opts,
+                                 marker=marker, limit=limit,
+                                 sort_key=sort_key, sort_dir=sort_dir,
+                                 sort=sort)
 
 
 @validation.add("required_services", services=[consts.Service.CINDER])
@@ -435,7 +449,7 @@ class CreateAndAttachVolume(cinder_utils.CinderBasic,
         create_volume_params = create_volume_params or {}
 
         if kwargs and create_vm_params:
-            raise ValueError("You can not set both 'kwargs'"
+            raise ValueError("You can not set both 'kwargs' "
                              "and 'create_vm_params' attributes."
                              "Please use 'create_vm_params'.")
 
@@ -635,7 +649,8 @@ class CreateAndUploadVolumeToImage(cinder_utils.CinderBasic,
         volume = self.cinder.create_volume(size, **kwargs)
         image = self.cinder.upload_volume_to_image(
             volume, force=force, container_format=container_format,
-            disk_format=disk_format)
+            disk_format=disk_format
+        )
 
         if do_delete:
             self.cinder.delete_volume(volume)
@@ -816,8 +831,8 @@ class CreateVolumeFromSnapshot(cinder_utils.CinderBasic):
                                            **kwargs)
 
         if do_delete:
-            self.cinder.delete_snapshot(snapshot)
             self.cinder.delete_volume(volume)
+            self.cinder.delete_snapshot(snapshot)
 
 
 @types.convert(image={"type": "glance_image"})

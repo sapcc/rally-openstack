@@ -45,16 +45,20 @@ class OpenStack(platform.Platform):
         "definitions": {
             "user": {
                 "type": "object",
-                "oneOf": [
+                "properties": {
+                    "username": {"type": "string"},
+                    "password": {"type": "string"},
+                    "project_name": {"type": "string"},
+                    "tenant_name": {"type": "string"},
+                    "domain_name": {"type": "string"},
+                    "user_domain_name": {"type": "string"},
+                    "project_domain_name": {"type": "string"},
+                },
+                "additionalProperties": False,
+                "anyOf": [
                     {
-                        "description": "Keystone V2.0",
-                        "properties": {
-                            "username": {"type": "string"},
-                            "password": {"type": "string"},
-                            "tenant_name": {"type": "string"},
-                        },
-                        "required": ["username", "password", "tenant_name"],
-                        "additionalProperties": False
+                        "description": "Keystone V2.0 (old-style)",
+                        "required": ["username", "password", "tenant_name"]
                     },
                     {
                         "description": "Keystone V3.0",
@@ -77,7 +81,7 @@ class OpenStack(platform.Platform):
                         ],
                         "additionalProperties": False
                     }
-                ],
+                ]
             },
             "api_info": {
                 "type": "object",
@@ -189,13 +193,15 @@ class OpenStack(platform.Platform):
         users_to_check = self.platform_data["users"]
         if self.platform_data["admin"]:
             users_to_check.append(self.platform_data["admin"])
-
+        clients = None
         for user in users_to_check:
+            user["api_info"] = self.platform_data.get("api_info", {})
             try:
+                clients = osclients.Clients(user)
                 if self.platform_data["admin"] == user:
-                    osclients.Clients(user).verified_keystone()
+                    clients.verified_keystone()
                 else:
-                    osclients.Clients(user).keystone()
+                    clients.keystone()
             except osclients.exceptions.RallyException as e:
                 # all rally native exceptions should provide user-friendly
                 # messages
@@ -224,6 +230,36 @@ class OpenStack(platform.Platform):
                     "traceback": traceback.format_exc()
                 }
 
+        for name in self.platform_data.get("api_info", {}):
+            if name == "keystone":
+                continue
+            if not hasattr(clients, name):
+                return {
+                    "available": False,
+                    "message": ("There is no OSClient plugin '%s' for"
+                                " communicating with OpenStack API."
+                                % name)}
+            client = getattr(clients, name)
+            try:
+                client.validate_version(client.choose_version())
+                client.create_client()
+            except osclients.exceptions.RallyException as e:
+                return {
+                    "available": False,
+                    "message": ("Invalid setting for '%(client)s':"
+                                " %(error)s") % {
+                        "client": name, "error": e.format_message()}
+                }
+            except Exception:
+                return {
+                    "available": False,
+                    "message": ("Can not create '%(client)s' with"
+                                " %(version)s version.") % {
+                        "client": name,
+                        "version": client.choose_version()},
+                    "traceback": traceback.format_exc()
+                }
+
         return {"available": True}
 
     def info(self):
@@ -249,6 +285,58 @@ class OpenStack(platform.Platform):
 
     @classmethod
     def create_spec_from_sys_environ(cls, sys_environ):
+        """Create a spec based on system environment.
+
+        .. envvar:: OS_AUTH_URL
+            The auth url for OpenStack cluster. Supported both versioned and
+            unversioned urls.
+
+        .. envvar:: OS_USERNAME
+            A user name with admin role to use.
+
+        .. envvar:: OS_PASSWORD
+            A password for selected user.
+
+        .. envvar:: OS_PROJECT_NAME
+            Project name to scope to
+
+        .. envvar:: OS_TENANT_NAME
+            Project name to scope to (an alternative for $OS_PROJECT_NAME)
+
+        .. envvar:: OS_USER_DOMAIN_NAME
+            User domain name (in case of Keystone V3)
+
+        .. envvar:: OS_PROJECT_DOMAIN_NAME
+            Domain name containing project (in case of Keystone V3)
+
+        .. envvar:: OS_ENDPOINT_TYPE
+             Type of endpoint. Valid endpoint types: admin, public, internal
+
+        .. envvar:: OS_INTERFACE
+             Type of endpoint (an alternative for $OS_INTERFACE)
+
+        .. envvar:: OS_REGION_NAME
+             Authentication region name
+
+        .. envvar:: OS_CACERT
+             A path to CA certificate bundle file
+
+        .. envvar:: OS_CERT
+             A path to Client certificate bundle file
+
+        .. envvar:: OS_KEY
+             A path to Client certificate key file
+
+        .. envvar:: OS_INSECURE
+             Disable server certificate verification
+
+        .. envvar:: OSPROFILER_HMAC_KEY
+             HMAC key to use for encrypting context while using osprofiler
+
+        .. envvar:: OSPROFILER_CONN_STR
+             A connection string for OSProfiler collector to grep profiling
+             results while building html task reports
+        """
 
         from oslo_utils import strutils
 
@@ -281,7 +369,13 @@ class OpenStack(platform.Platform):
             "https_insecure": strutils.bool_from_string(
                 sys_environ.get("OS_INSECURE")),
             "profiler_hmac_key": sys_environ.get("OSPROFILER_HMAC_KEY"),
-            "profiler_conn_str": sys_environ.get("OSPROFILER_CONN_STR")
+            "profiler_conn_str": sys_environ.get("OSPROFILER_CONN_STR"),
+            "api_info": {
+                "keystone": {
+                    "version": 2,
+                    "service_type": "identity"
+                }
+            }
         }
 
         user_domain_name = sys_environ.get("OS_USER_DOMAIN_NAME")
@@ -313,3 +407,13 @@ class OpenStack(platform.Platform):
                                    "should be specified."}
 
         return {"spec": spec, "available": True, "message": "Available"}
+
+    @classmethod
+    def _get_doc(cls):
+        doc = cls.__doc__.strip()
+        doc += "\n **Create a spec based on system environment.**\n"
+        # cut the first line since we already included the first line of it.
+        doc += "\n".join(
+            [line.strip() for line in
+             cls.create_spec_from_sys_environ.__doc__.split("\n")][1:])
+        return doc

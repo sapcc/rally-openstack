@@ -27,9 +27,11 @@ COPY etc/motd /etc/motd
 WORKDIR /home/rally/source
 
 # Use the CCloud rally version that supports domain scoped admin tokens
-RUN pip install git+https://github.com/sapcc/rally.git@ccloud
+RUN pip install git+https://github.com/sapcc/rally.git@ccloud  --constraint upper-constraints.txt
 
 RUN pip install . --constraint upper-constraints.txt && \
+    pip install pymysql && \
+    pip install psycopg2 && \
     mkdir /etc/rally && \
     echo "[database]" > /etc/rally/rally.conf && \
     echo "connection=sqlite:////home/rally/data/rally.db" >> /etc/rally/rally.conf

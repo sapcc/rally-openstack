@@ -246,7 +246,7 @@ class NovaScenarioTestCase(test.ScenarioTestCase):
         self.assertEqual(self.mock_wait_for_status.mock.return_value,
                          return_image)
         self._test_atomic_action_timer(nova_scenario.atomic_actions(),
-                                       "nova.create_image")
+                                       "nova.snapshot_server")
 
     def test__default_delete_server(self):
         nova_scenario = utils.NovaScenario(context=self.context)
@@ -742,6 +742,7 @@ class NovaScenarioTestCase(test.ScenarioTestCase):
         nova_scenario._live_migrate(self.server,
                                     block_migration=False,
                                     disk_over_commit=False,
+                                    skip_compute_nodes_check=True,
                                     skip_host_check=True)
 
         self.mock_wait_for_status.mock.assert_called_once_with(
@@ -760,7 +761,8 @@ class NovaScenarioTestCase(test.ScenarioTestCase):
         setattr(fake_server, "OS-EXT-SRV-ATTR:host", "a1")
         self.clients("nova").servers.get(return_value=fake_server)
         nova_scenario = utils.NovaScenario(context=self.context)
-        nova_scenario._migrate(fake_server, skip_host_check=True)
+        nova_scenario._migrate(fake_server, skip_compute_nodes_check=True,
+                               skip_host_check=True)
 
         self.mock_wait_for_status.mock.assert_called_once_with(
             fake_server,
@@ -774,7 +776,12 @@ class NovaScenarioTestCase(test.ScenarioTestCase):
 
         self.assertRaises(rally_exceptions.RallyException,
                           nova_scenario._migrate,
-                          fake_server, skip_host_check=False)
+                          fake_server, skip_compute_nodes_check=True,
+                          skip_host_check=False)
+        self.assertRaises(rally_exceptions.RallyException,
+                          nova_scenario._migrate,
+                          fake_server, skip_compute_nodes_check=False,
+                          skip_host_check=True)
 
     def test__add_server_secgroups(self):
         server = mock.Mock()
@@ -934,13 +941,6 @@ class NovaScenarioTestCase(test.ScenarioTestCase):
             "server")
         self._test_atomic_action_timer(nova_scenario.atomic_actions(),
                                        "nova.list_interfaces")
-
-    @mock.patch("rally_openstack.scenarios.nova.utils.image_service")
-    def test__list_images(self, mock_image_service):
-        result = utils.NovaScenario(clients=mock.Mock())._list_images()
-        glance = mock_image_service.Image.return_value
-        self.assertEqual(glance.list_images.return_value, result)
-        glance.list_images.assert_called_once_with()
 
     def test__lock_server(self):
         server = mock.Mock()

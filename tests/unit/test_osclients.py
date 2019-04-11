@@ -644,7 +644,7 @@ class OSClientsTestCase(test.TestCase):
                 "session": mock_keystoneauth1.session.Session(),
                 "endpoint_override": mock_cinder__get_endpoint.return_value}
             mock_cinder.client.Client.assert_called_once_with(
-                "2", **kw)
+                "3", **kw)
             self.assertEqual(fake_cinder, self.clients.cache["cinder"])
 
     @mock.patch("%s.Manila._get_endpoint" % PATH)
@@ -659,6 +659,7 @@ class OSClientsTestCase(test.TestCase):
             client = self.clients.manila()
             self.assertEqual(mock_manila.client.Client.return_value, client)
             kw = {
+                "insecure": False,
                 "session": mock_keystoneauth1.session.Session(),
                 "service_catalog_url": mock_manila__get_endpoint.return_value
             }
@@ -1042,3 +1043,23 @@ class OSClientsTestCase(test.TestCase):
 
             mock_watcher.client.Client.assert_called_once_with("1", **kw)
             self.assertEqual(fake_watcher, self.clients.cache["watcher"])
+
+    @mock.patch("%s.Barbican._get_endpoint" % PATH)
+    def test_barbican(self, mock_barbican__get_endpoint):
+        fake_barbican = fakes.FakeBarbicanClient()
+        mock_barbican = mock.MagicMock()
+        mock_barbican__get_endpoint.return_value = "http://fake.to:2/fake"
+        mock_keystoneauth1 = mock.MagicMock()
+        mock_barbican.client.Client.return_value = fake_barbican
+        with mock.patch.dict("sys.modules",
+                             {"barbicanclient": mock_barbican,
+                              "keystoneauth1": mock_keystoneauth1}):
+            client = self.clients.barbican()
+
+            self.assertEqual(fake_barbican, client)
+            kw = {
+                "session": mock_keystoneauth1.session.Session(),
+                "version": "v1"
+            }
+            mock_barbican.client.Client.assert_called_once_with(**kw)
+            self.assertEqual(fake_barbican, self.clients.cache["barbican"])

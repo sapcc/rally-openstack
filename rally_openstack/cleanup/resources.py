@@ -21,6 +21,7 @@ from rally_openstack.cleanup import base
 from rally_openstack.services.identity import identity
 from rally_openstack.services.image import glance_v2
 from rally_openstack.services.image import image
+from rally_openstack.services.loadbalancer import octavia
 
 
 CONF = cfg.CONF
@@ -322,6 +323,43 @@ class NeutronV2Loadbalancer(NeutronLbaasV2Mixin):
 
         return False
 
+# OCTAVIA
+
+
+@base.resource("octavia", "loadbalancer", order=next(_neutron_order),
+               tenant_resource=True)
+class OctaviaMixIn(base.ResourceManager):
+
+    def _client(self):
+        return octavia.Octavia(self.admin or self.user)
+
+    def id(self):
+        return self.raw_resource["id"]
+
+    def name(self):
+        return self.raw_resource["name"]
+
+    def delete(self):
+        return self._client().load_balancer_delete(
+            self.id(), cascade=True)
+
+    def is_deleted(self):
+        try:
+            self._client().load_balancer_show(self.id())
+        except Exception:
+            return True
+
+        return False
+
+    def list(self):
+        return self._client().load_balancer_list()["loadbalancers"]
+
+
+@base.resource("octavia", "pools", order=next(_neutron_order),
+               tenant_resource=True)
+class OctaviaPools(OctaviaMixIn):
+    pass
+
 
 @base.resource("neutron", "bgpvpn", order=next(_neutron_order),
                admin_required=True, perform_for_admin_only=True)
@@ -346,6 +384,20 @@ class NeutronFloatingIP(NeutronMixin):
             #   nothing here and move pre-newton logic into separate plugins
             return []
         return super(NeutronFloatingIP, self).list()
+
+
+@base.resource("neutron", "trunk", order=next(_neutron_order),
+               tenant_resource=True)
+class NeutronTrunk(NeutronMixin):
+    # Trunks must be deleted before the parent/subports are deleted
+
+    def list(self):
+        try:
+            return super(NeutronTrunk, self).list()
+        except Exception as e:
+            if getattr(e, "status_code", 400) == 404:
+                return []
+            raise
 
 
 @base.resource("neutron", "port", order=next(_neutron_order),
@@ -376,8 +428,8 @@ class NeutronPort(NeutronMixin):
         for port in ports:
             if not port.get("name"):
                 parent_name = None
-                if (port["device_owner"] in self.ROUTER_INTERFACE_OWNERS or
-                        port["device_owner"] == self.ROUTER_GATEWAY_OWNER):
+                if (port["device_owner"] in self.ROUTER_INTERFACE_OWNERS
+                        or port["device_owner"] == self.ROUTER_GATEWAY_OWNER):
                     # first case is a port created while adding an interface to
                     #   the subnet
                     # second case is a port created while adding gateway for
@@ -396,8 +448,8 @@ class NeutronPort(NeutronMixin):
 
     def delete(self):
         device_owner = self.raw_resource["device_owner"]
-        if (device_owner in self.ROUTER_INTERFACE_OWNERS or
-                device_owner == self.ROUTER_GATEWAY_OWNER):
+        if (device_owner in self.ROUTER_INTERFACE_OWNERS
+                or device_owner == self.ROUTER_GATEWAY_OWNER):
             if device_owner == self.ROUTER_GATEWAY_OWNER:
                 self._manager().remove_gateway_router(
                     self.raw_resource["device_id"])
@@ -406,7 +458,6 @@ class NeutronPort(NeutronMixin):
                 self.raw_resource["device_id"], {"port_id": self.id()})
         else:
             from neutronclient.common import exceptions as neutron_exceptions
-
             try:
                 self._manager().delete_port(self.id())
             except neutron_exceptions.PortNotFoundClient:
@@ -437,11 +488,16 @@ class NeutronRouter(NeutronMixin):
                tenant_resource=True)
 class NeutronSecurityGroup(NeutronMixin):
     def list(self):
-        tenant_sgs = super(NeutronSecurityGroup, self).list()
-        # NOTE(pirsriva): Filter out "default" security group deletion
-        # by non-admin role user
-        return filter(lambda r: r["name"] != "default",
-                      tenant_sgs)
+        try:
+            tenant_sgs = super(NeutronSecurityGroup, self).list()
+            # NOTE(pirsriva): Filter out "default" security group deletion
+            # by non-admin role user
+            return filter(lambda r: r["name"] != "default",
+                          tenant_sgs)
+        except Exception as e:
+            if getattr(e, "status_code", 400) == 404:
+                return []
+            raise
 
 
 @base.resource("neutron", "quota", order=next(_neutron_order),
@@ -524,6 +580,7 @@ class CinderQos(base.ResourceManager):
 
 # MANILA
 
+
 _manila_order = get_order(450)
 
 
@@ -554,9 +611,9 @@ class GlanceImage(base.ResourceManager):
         return image.Image(self.admin or self.user)
 
     def list(self):
-        images = (self._client().list_images(owner=self.tenant_uuid) +
-                  self._client().list_images(status="deactivated",
-                                             owner=self.tenant_uuid))
+        images = (self._client().list_images(owner=self.tenant_uuid)
+                  + self._client().list_images(status="deactivated",
+                                               owner=self.tenant_uuid))
         return images
 
     def delete(self):
@@ -814,6 +871,7 @@ class MistralExecutions(SynchronizedDeletion, base.ResourceManager):
 
 # MURANO
 
+
 _murano_order = get_order(1200)
 
 
@@ -1041,3 +1099,27 @@ class KeystoneEc2(SynchronizedDeletion, base.ResourceManager):
     def delete(self):
         self._manager().delete_ec2credential(
             self.user_id, access=self.raw_resource.access)
+
+# BARBICAN
+
+
+@base.resource("barbican", "secrets", order=1500, admin_required=True,
+               perform_for_admin_only=True)
+class BarbicanSecrets(base.ResourceManager):
+
+    def id(self):
+        return self.raw_resource.secret_ref
+
+    def is_deleted(self):
+        try:
+            self._manager().get(self.id())
+        except Exception:
+            return True
+
+        return False
+
+
+@base.resource("barbican", "containers", order=1500, admin_required=True,
+               perform_for_admin_only=True)
+class BarbicanContainers(base.ResourceManager):
+    pass

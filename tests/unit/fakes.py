@@ -187,6 +187,18 @@ class FakeFlavor(FakeResource):
         self.name = name
 
 
+class FakeSecret(FakeResource):
+
+    def __init__(self, id="secret-id-0", manager=None, secret_ref="secret_ref",
+                 name="secret-name-0"):
+        super(FakeSecret, self).__init__(manager, id=id)
+        self.secret_ref = secret_ref
+
+
+class FakeLoadBalancer(FakeResource):
+    pass
+
+
 class FakeKeypair(FakeResource):
     pass
 
@@ -1216,7 +1228,7 @@ class FakeNeutronClient(object):
         pool = setup_dict(data["pool"],
                           required=["lb_method", "protocol", "subnet_id"],
                           defaults={"name": generate_name("pool_"),
-                          "admin_state_up": True})
+                                    "admin_state_up": True})
         if pool["subnet_id"] not in self.__subnets:
             raise neutron_exceptions.NeutronClientException
         pool_id = generate_uuid()
@@ -1590,6 +1602,12 @@ class FakeWatcherClient(object):
         self.goal = FakeGoalManager()
 
 
+class FakeBarbicanClient(object):
+
+    def __init__(self):
+        pass
+
+
 class FakeClients(object):
 
     def __init__(self, credential_=None):
@@ -1612,6 +1630,7 @@ class FakeClients(object):
         self._ec2 = None
         self._senlin = None
         self._watcher = None
+        self._barbican = None
         self._credential = credential_ or FakeCredential(
             auth_url="http://fake.example.org:5000/v2.0/",
             username="fake_username",
@@ -1715,6 +1734,11 @@ class FakeClients(object):
         if not self._watcher:
             self._watcher = FakeWatcherClient()
         return self._watcher
+
+    def barbican(self):
+        if not self._barbican:
+            self._barbican = FakeBarbicanClient()
+        return self._barbican
 
 
 class FakeRunner(object):

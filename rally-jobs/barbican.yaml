@@ -1,0 +1,149 @@
+---
+  version: 2
+  title: Task for rally-task-barbican-job
+  description: Testing just one cinder scenario to verify that rally-task-barbican works
+  subtasks:
+    -
+      title: BarbicanSecrets.create_and_delete
+      workloads:
+        -
+          scenario:
+            BarbicanSecrets.create_and_delete: {}
+          runner:
+            constant:
+              times: 2
+              concurrency: 1
+          contexts:
+            users:
+              tenants: 1
+              users_per_tenant: 1
+    -
+      title: BarbicanSecrets.get
+      workloads:
+        -
+          scenario:
+            BarbicanSecrets.get: {}
+          runner:
+            constant:
+              times: 2
+              concurrency: 1
+          contexts:
+            users:
+              tenants: 1
+              users_per_tenant: 1
+    -
+      title: BarbicanSecrets.create_and_list
+      workloads:
+        -
+          scenario:
+            BarbicanSecrets.create_and_list: {}
+          runner:
+            constant:
+              times: 2
+              concurrency: 1
+          contexts:
+            users:
+              tenants: 1
+              users_per_tenant: 1
+    -
+      title: BarbicanSecrets.create
+      workloads:
+        -
+          scenario:
+            BarbicanSecrets.create: {}
+          runner:
+            constant:
+              times: 2
+              concurrency: 1
+          contexts:
+            users:
+              tenants: 1
+              users_per_tenant: 1
+    -
+      title: BarbicanSecrets.list
+      workloads:
+        -
+          scenario:
+            BarbicanSecrets.list: {}
+          runner:
+            constant:
+              times: 2
+              concurrency: 1
+          contexts:
+            users:
+              tenants: 1
+              users_per_tenant: 1
+    -
+      title: BarbicanContainers.list
+      workloads:
+        -
+          scenario:
+            BarbicanContainers.list: {}
+          runner:
+            constant:
+              times: 2
+              concurrency: 1
+          contexts:
+            users:
+              tenants: 1
+              users_per_tenant: 1
+    -
+      title: BarbicanContainers.create_and_delete
+      workloads:
+        -
+          scenario:
+            BarbicanContainers.create_and_delete: {}
+          runner:
+            constant:
+              times: 2
+              concurrency: 1
+          contexts:
+            users:
+              tenants: 1
+              users_per_tenant: 1
+    -
+      title: BarbicanContainers.create_certificate_and_delete
+      workloads:
+        -
+          scenario:
+            BarbicanContainers.create_certificate_and_delete: {}
+          runner:
+            constant:
+              times: 2
+              concurrency: 1
+          contexts:
+            users:
+              tenants: 1
+              users_per_tenant: 1
+    -
+      title: BarbicanContainers.create_rsa_and_delete
+      workloads:
+        -
+          scenario:
+            BarbicanContainers.create_rsa_and_delete: {}
+          runner:
+            constant:
+              times: 2
+              concurrency: 1
+          contexts:
+            users:
+              tenants: 1
+              users_per_tenant: 1
+    -
+      title: BarbicanSecrets.create_symmetric_and_delete
+      workloads:
+        -
+          scenario:
+            BarbicanSecrets.create_symmetric_and_delete:
+               payload: "rally_data"
+               algorithm: "aes"
+               bit_length: 256
+               mode: "cbc"
+          runner:
+            constant:
+              times: 2
+              concurrency: 1
+          contexts:
+            users:
+              tenants: 1
+              users_per_tenant: 1

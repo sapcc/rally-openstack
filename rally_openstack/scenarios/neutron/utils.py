@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import netaddr
 import random
 
 from rally.common import cfg
@@ -34,7 +35,6 @@ LOG = logging.getLogger(__name__)
 class NeutronScenario(scenario.OpenStackScenario):
     """Base class for Neutron scenarios with basic atomic actions."""
 
-    SUBNET_IP_VERSION = 4
     # TODO(rkiran): modify in case LBaaS-v2 requires
     LB_METHOD = "ROUND_ROBIN"
     LB_PROTOCOL = "HTTP"
@@ -147,7 +147,8 @@ class NeutronScenario(scenario.OpenStackScenario):
 
         subnet_create_args["network_id"] = network_id
         subnet_create_args["name"] = self.generate_random_name()
-        subnet_create_args.setdefault("ip_version", self.SUBNET_IP_VERSION)
+        subnet_create_args["ip_version"] = netaddr.IPNetwork(
+            subnet_create_args["cidr"]).version
 
         return self.clients("neutron").create_subnet(
             {"subnet": subnet_create_args})
@@ -409,16 +410,17 @@ class NeutronScenario(scenario.OpenStackScenario):
             router["id"], {"subnet_id": subnet["id"]})
 
     @atomic.action_timer("neutron.add_gateway_router")
-    def _add_gateway_router(self, router, ext_net, enable_snat):
+    def _add_gateway_router(self, router, ext_net, enable_snat=None):
         """Set the external network gateway for a router.
 
         :param router: dict, neutron router
         :param ext_net: external network for the gateway
-        :param enable_snat: True if enable snat
+        :param enable_snat: True if enable snat, None to avoid update
         """
         gw_info = {"network_id": ext_net["network"]["id"]}
-        if self._ext_gw_mode_enabled:
-            gw_info["enable_snat"] = enable_snat
+        if enable_snat is not None:
+            if self._ext_gw_mode_enabled:
+                gw_info["enable_snat"] = enable_snat
         self.clients("neutron").add_gateway_router(
             router["router"]["id"], gw_info)
 
@@ -571,6 +573,29 @@ class NeutronScenario(scenario.OpenStackScenario):
         :param: dict, floating IP object
         """
         return self.clients("neutron").delete_floatingip(floating_ip["id"])
+
+    @atomic.action_timer("neutron.associate_floating_ip")
+    def _associate_floating_ip(self, floatingip, port):
+        """Associate floating IP with port.
+
+        :param floatingip: floating IP dict
+        :param port: port dict
+        :returns: updated floating IP dict
+        """
+        return self.clients("neutron").update_floatingip(
+            floatingip["id"],
+            {"floatingip": {"port_id": port["id"]}})["floatingip"]
+
+    @atomic.action_timer("neutron.dissociate_floating_ip")
+    def _dissociate_floating_ip(self, floatingip):
+        """Dissociate floating IP from ports.
+
+        :param floatingip: floating IP dict
+        :returns: updated floating IP dict
+        """
+        return self.clients("neutron").update_floatingip(
+            floatingip["id"],
+            {"floatingip": {"port_id": None}})["floatingip"]
 
     @atomic.action_timer("neutron.create_healthmonitor")
     def _create_v1_healthmonitor(self, **healthmonitor_create_args):
@@ -845,6 +870,8 @@ class NeutronScenario(scenario.OpenStackScenario):
         security_group_rule_args["security_group_id"] = security_group_id
         if "direction" not in security_group_rule_args:
             security_group_rule_args["direction"] = "ingress"
+        if "protocol" not in security_group_rule_args:
+            security_group_rule_args["protocol"] = "tcp"
 
         return self.clients("neutron").create_security_group_rule(
             {"security_group_rule": security_group_rule_args})
@@ -877,3 +904,29 @@ class NeutronScenario(scenario.OpenStackScenario):
         """
         self.clients("neutron").delete_security_group_rule(
             security_group_rule)
+
+    @atomic.action_timer("neutron.delete_trunk")
+    def _delete_trunk(self, trunk_port):
+        self.clients("neutron").delete_trunk(trunk_port["port_id"])
+
+    @atomic.action_timer("neutron.create_trunk")
+    def _create_trunk(self, trunk_payload):
+        trunk_payload["name"] = self.generate_random_name()
+        return self.clients("neutron").create_trunk({"trunk": trunk_payload})
+
+    @atomic.action_timer("neutron.list_trunks")
+    def _list_trunks(self, **kwargs):
+        return self.clients("neutron").list_trunks(**kwargs)["trunks"]
+
+    @atomic.action_timer("neutron.list_ports_by_device_id")
+    def _list_ports_by_device_id(self, device_id):
+        return self.clients("neutron").list_ports(device_id=device_id)
+
+    @atomic.action_timer("neutron.list_subports_by_trunk")
+    def _list_subports_by_trunk(self, trunk_id):
+        return self.clients("neutron").trunk_get_subports(trunk_id)
+
+    @atomic.action_timer("neutron._add_subports_to_trunk")
+    def _add_subports_to_trunk(self, trunk_id, subports):
+        return self.clients("neutron").trunk_add_subports(
+            trunk_id, {"sub_ports": subports})

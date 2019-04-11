@@ -15,6 +15,7 @@
 
 import ddt
 import mock
+import netaddr
 
 from rally import exceptions
 from rally_openstack.scenarios.neutron import utils
@@ -160,7 +161,7 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
             "subnet": {
                 "network_id": network_id,
                 "cidr": start_cidr,
-                "ip_version": self.scenario.SUBNET_IP_VERSION,
+                "ip_version": netaddr.IPNetwork(start_cidr).version,
                 "name": self.scenario.generate_random_name.return_value
             }
         }
@@ -176,8 +177,9 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
         self.clients("neutron").create_subnet.reset_mock()
 
         # Custom options
-        extras = {"cidr": "192.168.16.0/24", "allocation_pools": []}
-        mock_network_wrapper.generate_cidr.return_value = "192.168.16.0/24"
+        extras = {"cidr": "2001::/64", "allocation_pools": []}
+        extras["ip_version"] = netaddr.IPNetwork(extras["cidr"]).version
+        mock_network_wrapper.generate_cidr.return_value = "2001::/64"
         subnet_data.update(extras)
         expected_subnet_data["subnet"].update(extras)
         self.scenario._create_subnet(network, subnet_data)
@@ -411,6 +413,29 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(self.scenario.atomic_actions(),
                                        "neutron.add_gateway_router")
 
+    def test_add_gateway_router_no_snat_update(self):
+        ext_net = {
+            "network": {
+                "name": "extnet-name",
+                "id": "extnet-id"
+            }
+        }
+        router = {
+            "router": {
+                "name": "router-name",
+                "id": "router-id"
+            }
+        }
+        gw_info = {"network_id": ext_net["network"]["id"]}
+        self.clients("neutron").list_extensions.return_value = {
+            "extensions": [{"alias": "ext-gw-mode"}]}
+
+        self.scenario._add_gateway_router(router, ext_net)
+        self.clients("neutron").add_gateway_router.assert_called_once_with(
+            router["router"]["id"], gw_info)
+        self._test_atomic_action_timer(self.scenario.atomic_actions(),
+                                       "neutron.add_gateway_router")
+
     def test_add_gateway_router_without_ext_gw_mode_extension(self):
         ext_net = {
             "network": {
@@ -447,10 +472,6 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
             router["router"]["id"])
         self._test_atomic_action_timer(self.scenario.atomic_actions(),
                                        "neutron.remove_gateway_router")
-
-    def test_SUBNET_IP_VERSION(self):
-        """Curent NeutronScenario implementation supports only IPv4."""
-        self.assertEqual(4, utils.NeutronScenario.SUBNET_IP_VERSION)
 
     def test_create_port(self):
         net_id = "network-id"
@@ -628,6 +649,23 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
             fip["floatingip"]["id"])
         self._test_atomic_action_timer(self.scenario.atomic_actions(),
                                        "neutron.delete_floating_ip")
+
+    def test_associate_floating_ip(self):
+        fip = {"id": "fip-id"}
+        port = {"id": "port-id"}
+        self.scenario._associate_floating_ip(fip, port)
+        self.clients("neutron").update_floatingip.assert_called_once_with(
+            "fip-id", {"floatingip": {"port_id": "port-id"}})
+        self._test_atomic_action_timer(self.scenario.atomic_actions(),
+                                       "neutron.associate_floating_ip")
+
+    def test_dissociate_floating_ip(self):
+        fip = {"id": "fip-id"}
+        self.scenario._dissociate_floating_ip(fip)
+        self.clients("neutron").update_floatingip.assert_called_once_with(
+            "fip-id", {"floatingip": {"port_id": None}})
+        self._test_atomic_action_timer(self.scenario.atomic_actions(),
+                                       "neutron.dissociate_floating_ip")
 
     @ddt.data(
         {},
@@ -847,6 +885,7 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
                 "id": "fake-id",
                 "security_group_id": "security-group-id",
                 "direction": "ingress",
+                "protocol": "tcp",
                 "description": "Fake Rule"
             }
         }
@@ -858,6 +897,7 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
             "security_group_rule":
                 {"security_group_id": "security-group-id",
                  "direction": "ingress",
+                 "protocol": "tcp",
                  "description": "Fake Rule"}
         }
         result_security_group_rule = self.scenario._create_security_group_rule(
@@ -1291,6 +1331,70 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
         self.assertEqual(value, return_asso_list)
         self._test_atomic_action_timer(self.scenario.atomic_actions(),
                                        "neutron.list_bgpvpn_router_assocs")
+
+    def test__delete_trunk(self):
+        trunk_port = {"trunk": {"port_id": "fake-id"}}
+        self.scenario._delete_trunk(trunk_port["trunk"])
+        self.clients("neutron").delete_trunk.assert_called_once_with(
+            trunk_port["trunk"]["port_id"])
+        self._test_atomic_action_timer(self.scenario.atomic_actions(),
+                                       "neutron.delete_trunk")
+
+    def test__create_trunk(self):
+        port_id = "port-id"
+        subport_payload = [{"port_id": "subport-port-id",
+                            "segmentation_type": "vlan",
+                            "segmentation_id": 1}]
+        trunk_payload = {
+            "port_id": port_id,
+            "name": self.scenario.generate_random_name.return_value,
+            "sub_ports": subport_payload
+        }
+        expected_trunk_args = {
+            "trunk": trunk_payload
+        }
+
+        self.scenario._create_trunk(trunk_payload)
+        self.clients("neutron").create_trunk.assert_called_once_with(
+            expected_trunk_args)
+        self._test_atomic_action_timer(self.scenario.atomic_actions(),
+                                       "neutron.create_trunk")
+
+    def test__list_trunks(self):
+        trunks = [{"name": "trunk1"}, {"name": "trunk2"}]
+        self.clients("neutron").list_trunks.return_value = {"trunks": trunks}
+        self.assertEqual(trunks, self.scenario._list_trunks())
+        self._test_atomic_action_timer(self.scenario.atomic_actions(),
+                                       "neutron.list_trunks")
+
+    def test__list_ports_by_device_id(self):
+        device_id = "device-id"
+        self.scenario._list_ports_by_device_id(device_id)
+        self.clients("neutron").list_ports.assert_called_once_with(
+            device_id=device_id)
+        self._test_atomic_action_timer(self.scenario.atomic_actions(),
+                                       "neutron.list_ports_by_device_id")
+
+    def test__list_subports_by_trunk(self):
+        trunk_id = "trunk-id"
+        self.scenario._list_subports_by_trunk(trunk_id)
+        self.clients("neutron").trunk_get_subports.assert_called_once_with(
+            trunk_id)
+        self._test_atomic_action_timer(self.scenario.atomic_actions(),
+                                       "neutron.list_subports_by_trunk")
+
+    def test__add_subports_to_trunk(self):
+        trunk_id = "trunk-id"
+        port_id = "port-id"
+        subport_payload = [{"port_id": port_id}]
+        expected_subport_payload = {
+            "sub_ports": subport_payload
+        }
+        self.scenario._add_subports_to_trunk(trunk_id, subport_payload)
+        self.clients("neutron").trunk_add_subports.assert_called_once_with(
+            trunk_id, expected_subport_payload)
+        self._test_atomic_action_timer(self.scenario.atomic_actions(),
+                                       "neutron._add_subports_to_trunk")
 
 
 class NeutronScenarioFunctionalTestCase(test.FakeClientsScenarioTestCase):

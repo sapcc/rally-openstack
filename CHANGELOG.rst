@@ -16,18 +16,82 @@ Changelog
 .. Release notes for existing releases are MUTABLE! If there is something that
    was missed or can be improved, feel free to change it!
 
-unreleased
-----------
+[1.4.0] - 2019-03-07
+--------------------
+
+Added
+~~~~~
+
+* Added neutron trunk scenarios
+* Added barbican scenarios
+  * [scenario plugin] BarbicanContainers.list
+  * [scenario plugin] BarbicanContainers.create_and_delete
+  * [scenario plugin] BarbicanContainers.create_and_add
+  * [scenario plugin] BarbicanContainers.create_certificate_and_delete
+  * [scenario plugin] BarbicanContainers.create_rsa_and_delete
+  * [scenario plugin] BarbicanSecrets.list
+  * [scenario plugin] BarbicanSecrets.create
+  * [scenario plugin] BarbicanSecrets.create_and_delete
+  * [scenario plugin] BarbicanSecrets.create_and_get
+  * [scenario plugin] BarbicanSecrets.get
+  * [scenario plugin] BarbicanSecrets.create_and_list
+  * [scenario plugin] BarbicanSecrets.create_symmetric_and_delete 
+* Added octavia scenarios
+  * [scenario plugin] Octavia.create_and_list_loadbalancers
+  * [scenario plugin] Octavia.create_and_delete_loadbalancers
+  * [scenario plugin] Octavia.create_and_update_loadbalancers
+  * [scenario plugin] Octavia.create_and_stats_loadbalancers
+  * [scenario plugin] Octavia.create_and_show_loadbalancers
+  * [scenario plugin] Octavia.create_and_list_pools
+  * [scenario plugin] Octavia.create_and_delete_pools
+  * [scenario plugin] Octavia.create_and_update_pools
+  * [scenario plugin] Octavia.create_and_show_pools
+* Support for osprofiler config in Devstack plugin.
+* Added property 'floating_ip_enabled' in magnum cluster_templates context.
+* Enhanced neutron trunk port scenario to create multiple trunks
+* Enhanced NeutronSecurityGroup.create_and_list_security_group_rules
+* Added three new trunk port related scenarios
+  * [scenario plugin] NeutronTrunks.boot_server_with_subports
+  * [scenario plugin] NeutronTrunks.boot_server_and_add_subports
+  * [scenario plugin] NeutronTrunks.boot_server_and_batch_add_subports
+* Added neutron scenarios
+  [scenario plugin] NeutronNetworks.associate_and_dissociate_floating_ips
+
+Changed
+~~~~~~~
+
+* Extend CinderVolumes.list_volumes scenario arguments.
+
+Fixed
+~~~~~
+
+* Ignoring ``region_name`` from environment specification while
+  initializing keystone client.
+* Fetching OSProfiler trace-info for some drivers.
+* ``https_insecure`` is not passed to manilaclient
+
+[1.3.0] - 2018-10-08
+--------------------
 
 Added
 ~~~~~
 
 * Support Python 3.7 environment.
-* ``https_cert`` and ``https_key`` options of the spec for
+* New options ``https_cert`` and ``https_key`` are added to the spec for
   ``existing@openstack`` platform to represent client certificate bundle and
   key files. Also the support for appropriate system environment variables (
   ``OS_CERT``, ``OS_KEY``) is added.
-* Support client api option while deploying platform.
+* ``existing@openstack`` plugin now supports a new field ``api_info`` for
+  specifying not default API version/service_type to use. The format and
+  purpose is similar to `api_versions
+  <https://xrally.org/plugins/openstack/plugins/#api_versions-context>`_ task
+  context.
+* Added Cinder V3 support and use it as the default version. You could use
+  api_versions context or api_info option of the spec to choose the proper
+  version.
+* The documentation for ``existing@openstack`` plugin is extended with
+  information about accepted system environment variables via
+  ``rally env create --from-sysenv`` command.
 
 Changed
 ~~~~~~~
@@ -35,25 +99,36 @@ Changed
 * Our requirements are updated as like upper-constraints (the list of
   suggested tested versions to use)
 * Error messages become more user-friendly in ``rally env check``.
+* Deprecate api_info argument of all clients plugins which inherits from
+  OSClient and deprecate api_version argument of
+  ``rally_openstack.cleanup.manager.cleanup``. API information (not default
+  version/service_type to use) has been included into credentials dictionary.
+* The proper packages are added to `docker image
+  <https://hub.docker.com/r/xrally/xrally-openstack>`_ to support MySQL and
+  PostgreSQL as DB backends.
+* Rename an action ``nova.create_image`` to ``nova.snapshot_server`` for better
+  understanding for what is actually done.
 
 Removed
 ~~~~~~~
 
-* Remove deprecated wrappers (rally_openstack.wrappers) and 
-  helpers (scenario utils) for keystone, cinder, glance 
-  services. The new service model should be used instead 
+* Remove deprecated wrappers (rally_openstack.wrappers) and
+  helpers (scenario utils) for Keystone, Cinder, Glance
+  services. The new service model should be used instead
   (see ``rally_openstack.services`` module for more details)
-  while developing custom plugins. All the inner plugins used
+  while developing custom plugins. All the inner plugins have been using
   the new code for a long time.
 * Remove deprecated properties *insecure*, *cacert* (use *https_insecure* and
   *https_cacert* properties instead) and method *list_services* (use
-  appropriate method of Clients object) of OpenStackCredentials object.
+  appropriate method of Clients object) from
+  *rally_openstack.credentials.OpenStackCredentials* object.
+* Remove deprecated in Rally 0.10.0 ``NovaImages.list_images`` scenario.
 
 Fixed
 ~~~~~
 
 * Keypairs are now properly cleaned up after the execution of Magnum
-  tests.
+  workloads.
 
 
 [1.2.0] - 2018-06-25
@@ -122,8 +197,6 @@ Fixed
   valid name for the context (if there is no other ``api_versions`` contexts
   for other platforms, but the case of name conflict is covered by another
   check).
-* The endpoint_type defined in environment specification/deployment
-  configuration is the endpoint interface for gnocchi.
 
 [1.0.0] - 2018-03-28
 --------------------

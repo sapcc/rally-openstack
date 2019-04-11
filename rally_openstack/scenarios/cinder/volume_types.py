@@ -66,7 +66,8 @@ class CreateAndGetVolumeType(cinder_utils.CinderBasic):
 
 
 @validation.add("required_services", services=[consts.Service.CINDER])
-@validation.add("required_api_versions", component="cinder", versions=["2"])
+@validation.add("required_api_versions", component="cinder",
+                versions=["2", "3"])
 @validation.add("required_platform", platform="openstack", admin=True)
 @scenario.configure(context={"admin_cleanup@openstack": ["cinder"]},
                     name="CinderVolumeTypes.create_and_update_volume_type",
@@ -117,7 +118,7 @@ class CreateAndListVolumeTypes(cinder_utils.CinderBasic):
             is_public=is_public)
 
         pool_list = self.admin_cinder.list_types()
-        msg = ("type not included into list of available types"
+        msg = ("type not included into list of available types "
                "created type: {}\n"
                "pool of types: {}\n").format(volume_type, pool_list)
         self.assertIn(volume_type.id,
@@ -380,7 +381,8 @@ class CreateAndUpdateEncryptionType(cinder_utils.CinderBasic):
 
 
 @validation.add("required_platform", platform="openstack", admin=True)
-@validation.add("required_api_versions", component="cinder", versions=["2"])
+@validation.add("required_api_versions", component="cinder",
+                versions=["2", "3"])
 @validation.add("required_services", services=consts.Service.CINDER)
 @scenario.configure(
     context={"admin_cleanup@openstack": ["cinder"]},
