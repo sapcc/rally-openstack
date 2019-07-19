@@ -152,7 +152,7 @@ class TempestContext(context.VerifierContext):
             roles.append(conf.CONF.openstack.heat_stack_owner_role)
             roles.append(conf.CONF.openstack.heat_stack_user_role)
 
-        existing_roles = set(role.name for role in keystoneclient.roles.list())
+        existing_roles = set(role.name.lower() for role in keystoneclient.roles.list())
 
         for role in roles:
             if role.lower() not in existing_roles:
