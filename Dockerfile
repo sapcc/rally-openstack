@@ -26,6 +26,9 @@ COPY . /home/rally/source
 COPY etc/motd /etc/motd
 WORKDIR /home/rally/source
 
+# ensure that we have all system packages installed
+RUN pip install bindep &&  apt-get install --yes $(bindep -b | tr '\n' ' ')
+
 # Use the CCloud rally version that supports domain scoped admin tokens
 RUN pip install git+https://github.com/sapcc/rally.git@ccloud  --constraint upper-constraints.txt
 

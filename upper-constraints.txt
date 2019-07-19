@@ -86,7 +86,7 @@ pyOpenSSL===18.0.0
 pyparsing===2.2.2
 pyperclip===1.7.0
 Python===2.7.15rc1
-python-barbicanclient===4.5.2 
+python-barbicanclient===4.5.2
 python-ceilometerclient===2.9.0
 python-cinderclient===4.0.1
 python-dateutil===2.7.3
@@ -115,7 +115,7 @@ python-watcherclient===2.1.0
 python-zaqarclient===1.10.0
 pytz===2018.5
 PyYAML===3.13
-#rally===1.4.1
+#rally===1.5.1
 git+https://github.com/sapcc/rally.git@ccloud
 requests===2.21.0
 requests-oauthlib===1.0.0
@@ -126,6 +126,7 @@ semantic-version===2.6.0
 setuptools===40.4.3
 simplejson===3.16.0
 six===1.11.0
+Sphinx==1.8.5;python_version=='2.7'
 SQLAlchemy===1.2.12
 sqlalchemy-migrate===0.11.0
 sqlparse===0.2.4

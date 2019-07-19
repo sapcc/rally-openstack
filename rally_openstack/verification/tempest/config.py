@@ -34,6 +34,12 @@ class TempestConfigfileManager(object):
 
     def __init__(self, deployment):
         self.credential = deployment.get_credentials_for("openstack")["admin"]
+        if not self.credential:
+            raise exceptions.ValidationError(
+                "Failed to configure 'tempest' for '%s' environment since "
+                "admin credentials for OpenStack platform is missed there." %
+                deployment["name"]
+            )
         self.clients = self.credential.clients()
         self.available_services = self.clients.services().values()
 
@@ -128,6 +134,11 @@ class TempestConfigfileManager(object):
         self.conf.set(section_name, "auth_version", "v%s" % target_version)
         self.conf.set(section_name, "uri", uri)
         self.conf.set(section_name, "uri_v3", uri_v3)
+        if self.credential.endpoint_type:
+            self.conf.set(section_name, "v2_endpoint_type",
+                          self.credential.endpoint_type)
+            self.conf.set(section_name, "v3_endpoint_type",
+                          self.credential.endpoint_type)
 
         self.conf.set(section_name, "disable_ssl_certificate_validation",
                       str(self.credential.https_insecure))

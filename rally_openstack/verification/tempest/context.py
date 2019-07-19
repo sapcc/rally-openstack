@@ -155,7 +155,7 @@ class TempestContext(context.VerifierContext):
         existing_roles = set(role.name for role in keystoneclient.roles.list())
 
         for role in roles:
-            if role not in existing_roles:
+            if role.lower() not in existing_roles:
                 LOG.debug("Creating role '%s'." % role)
                 self._created_roles.append(keystoneclient.roles.create(role))
 
