@@ -1,4 +1,4 @@
-ARG FROM=ubuntu:xenial
+ARG FROM=ubuntu:bionic
 FROM ${FROM}
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     curl -sLo /usr/local/bin/kubernetes-entrypoint https://github.wdf.sap.corp/d062284/k8s-entrypoint-build/releases/download/f52d105/kubernetes-entrypoint && \
     chmod +x /usr/local/bin/kubernetes-entrypoint
 
-RUN apt-get install --yes sudo python python-pip vim git-core && \
+RUN apt-get install --yes sudo python python-pip python3.7 python3-distutils vim git-core && \
     pip install --upgrade pip && \
     useradd -u 65500 -m rally && \
     usermod -aG sudo rally && \
