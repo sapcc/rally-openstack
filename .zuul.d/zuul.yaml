@@ -12,18 +12,18 @@
 - project:
     check:
       jobs:
+        - rally-tox-cover
         - rally-tox-pep8
         - rally-tox-py27
         - rally-tox-py35
         - rally-tox-py36
         - rally-tox-py37
-        - rally-tox-cover
         - rally-dsvm-tox-functional
         - rally-docker-check
-        - rally-task-simple-job
         - rally-task-basic-with-existing-users:
             # use_existing_users key did not trigger proper ansible tasks
             voting: false
+        - rally-task-simple-job
         - rally-task-barbican:
             voting: false
         - rally-task-cinder
@@ -34,8 +34,6 @@
             voting: false
         - rally-task-ironic
         - rally-task-keystone-glance-swift
-        - rally-task-load-balancing:
-            voting: false
         - rally-task-magnum:
             voting: false
             files:
@@ -44,15 +42,15 @@
               - rally_openstack/contexts/magnum
               - rally_openstack/scenarios/magnum
               - rally_openstack/osclients.py
-        # NOTE(andreykurilin): manila requires some specific configuration.
-        #   Calling special hook can help.
-        # https://github.com/openstack/manila/blob/master/playbooks/legacy/rally-dsvm-manila-multibackend/run.yaml
-        #- rally-task-manila
-        #- rally-task-manila-no-ss
+        - rally-task-manila-no-ss:
+            voting: false
+        - rally-task-manila-ss:
+            voting: false
         - rally-task-mistral
         # it did not work for a long time. try to re-configure it
         #- rally-task-monasca
-        - rally-task-murano
+        - rally-task-murano:
+            voting: false
         - rally-task-neutron
         - rally-task-neutron-trunk:
             files:
@@ -65,6 +63,8 @@
             voting: false
         # it did not work for a long time
         #- rally-task-senlin
+        #- rally-task-octavia:
+        #    voting: false
         - rally-task-telemetry
         - rally-task-watcher:
             # watcher-api did not start last time
@@ -73,12 +73,12 @@
         - rally-verify-tempest
     gate:
       jobs:
+        - rally-tox-cover
         - rally-tox-pep8
         - rally-tox-py27
         - rally-tox-py35
         - rally-tox-py36
         - rally-tox-py37
-        - rally-tox-cover
         - rally-dsvm-tox-functional
         - rally-docker-check
         - rally-task-simple-job
@@ -87,7 +87,6 @@
         - rally-task-ironic
         - rally-task-keystone-glance-swift
         - rally-task-mistral
-        - rally-task-murano
         - rally-task-neutron
         - rally-task-telemetry
         - rally-task-zaqar

@@ -39,17 +39,19 @@ class CreateAndListPools(utils.OctaviaBase):
         subnets = []
         loadbalancers = []
         networks = self.context.get("tenant", {}).get("networks", [])
+        project_id = self.context["tenant"]["id"]
         for network in networks:
             subnets.extend(network.get("subnets", []))
         for subnet_id in subnets:
             lb = self.octavia.load_balancer_create(
+                project_id=project_id,
                 subnet_id=subnet_id)
             loadbalancers.append(lb)
 
         for loadbalancer in loadbalancers:
             self.octavia.wait_for_loadbalancer_prov_status(loadbalancer)
             self.octavia.pool_create(
-                lb_id=loadbalancer["loadbalancer"]["id"],
+                lb_id=loadbalancer["id"],
                 protocol=protocol, lb_algorithm=lb_algorithm)
         self.octavia.pool_list()
 
@@ -71,17 +73,19 @@ class CreateAndDeletePools(utils.OctaviaBase):
         subnets = []
         loadbalancers = []
         networks = self.context.get("tenant", {}).get("networks", [])
+        project_id = self.context["tenant"]["id"]
         for network in networks:
             subnets.extend(network.get("subnets", []))
         for subnet_id in subnets:
             lb = self.octavia.load_balancer_create(
+                project_id=project_id,
                 subnet_id=subnet_id)
             loadbalancers.append(lb)
 
         for loadbalancer in loadbalancers:
             self.octavia.wait_for_loadbalancer_prov_status(loadbalancer)
             pools = self.octavia.pool_create(
-                lb_id=loadbalancer["loadbalancer"]["id"],
+                lb_id=loadbalancer["id"],
                 protocol=protocol, lb_algorithm=lb_algorithm)
             self.octavia.pool_delete(pools["id"])
 
@@ -103,10 +107,12 @@ class CreateAndUpdatePools(utils.OctaviaBase):
         subnets = []
         loadbalancers = []
         networks = self.context.get("tenant", {}).get("networks", [])
+        project_id = self.context["tenant"]["id"]
         for network in networks:
             subnets.extend(network.get("subnets", []))
         for subnet_id in subnets:
             lb = self.octavia.load_balancer_create(
+                project_id=project_id,
                 subnet_id=subnet_id)
             loadbalancers.append(lb)
 
@@ -117,7 +123,7 @@ class CreateAndUpdatePools(utils.OctaviaBase):
         for loadbalancer in loadbalancers:
             self.octavia.wait_for_loadbalancer_prov_status(loadbalancer)
             pools = self.octavia.pool_create(
-                lb_id=loadbalancer["loadbalancer"]["id"],
+                lb_id=loadbalancer["id"],
                 protocol=protocol, lb_algorithm=lb_algorithm)
             self.octavia.pool_set(
                 pool_id=pools["id"], pool_update_args=update_pool)
@@ -140,16 +146,18 @@ class CreateAndShowPools(utils.OctaviaBase):
         subnets = []
         loadbalancers = []
         networks = self.context.get("tenant", {}).get("networks", [])
+        project_id = self.context["tenant"]["id"]
         for network in networks:
             subnets.extend(network.get("subnets", []))
         for subnet_id in subnets:
             lb = self.octavia.load_balancer_create(
+                project_id=project_id,
                 subnet_id=subnet_id)
             loadbalancers.append(lb)
 
         for loadbalancer in loadbalancers:
             self.octavia.wait_for_loadbalancer_prov_status(loadbalancer)
             pools = self.octavia.pool_create(
-                lb_id=loadbalancer["loadbalancer"]["id"],
+                lb_id=loadbalancer["id"],
                 protocol=protocol, lb_algorithm=lb_algorithm)
             self.octavia.pool_show(pools["id"])

@@ -642,6 +642,31 @@
         failure_rate:
           max: 20
 
+  NeutronNetworks.create_and_bind_ports:
+    -
+      args:
+        ports_per_network: 5
+      runner:
+        type: "constant"
+        times: {{smoke or 10}}
+        concurrency: {{smoke or 5}}
+      context:
+        users:
+          tenants: {{smoke or 2}}
+          users_per_tenant: {{smoke or 1}}
+        roles:
+          - admin
+        quotas:
+          neutron:
+            network: -1
+            subnet: -1
+            port: -1
+        network: {}
+        networking_agents: {}
+      sla:
+        failure_rate:
+          max: 0
+
   NeutronSubnets.delete_subnets:
     -
       runner:
@@ -789,37 +814,6 @@
       sla:
         failure_rate:
           max: 0
-    -
-      args:
-        command:
-          # The `image_command_customizer` context prepares an image and
-          # executes `rally-jobs/extra/install_benchmark.sh` script. The script
-          # itself creates a new file inside the image "dd_test.sh" which is
-          # called in the scenario. It doesn't have anything related to
-          # VMTask.dd_load_test scenario
-          remote_path: "./dd_test.sh"
-        flavor:
-          name: "m1.tiny"
-        username: "cirros"
-      runner:
-        type: "constant"
-        times: 1
-        concurrency: 1
-      context:
-        image_command_customizer:
-          command:
-            local_path: "~/.rally/extra/install_benchmark.sh"
-            remote_path: "./install_benchmark.sh"
-          flavor:
-            name: "m1.tiny"
-          image:
-            name: {{image_name}}
-          username: "cirros"
-        users:
-          tenants: 1
-          users_per_tenant: 1
-        network:
-          dns_nameservers: []
 
   VMTasks.dd_load_test:
     -

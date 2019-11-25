@@ -36,7 +36,7 @@ class Octavia(service.Service):
         return self._clients.octavia().load_balancer_list()
 
     @atomic.action_timer("octavia.load_balancer_show")
-    def load_balancer_show(self, lb):
+    def load_balancer_show(self, lb_id):
         """Show a load balancer
 
         :param string lb:
@@ -44,11 +44,18 @@ class Octavia(service.Service):
         :return:
             A dict of the specified load balancer's settings
         """
-        return self._clients.octavia().load_balancer_show(lb["id"])
+        try:
+            new_lb = self._clients.octavia().load_balancer_show(lb_id)
+        except Exception as e:
+            if getattr(e, "code", 400) == 404:
+                raise exceptions.GetResourceNotFound(resource=lb_id)
+            raise exceptions.GetResourceFailure(resource=lb_id, err=e)
+        return new_lb
 
     @atomic.action_timer("octavia.load_balancer_create")
     def load_balancer_create(self, subnet_id, description=None,
-                             admin_state=None, listeners=None, flavor_id=None,
+                             admin_state=None, project_id=None,
+                             listeners=None, flavor_id=None,
                              provider=None, vip_qos_policy_id=None):
         """Create a load balancer
 
@@ -61,11 +68,13 @@ class Octavia(service.Service):
             "listeners": listeners,
             "provider": provider,
             "admin_state_up": admin_state or True,
+            "project_id": project_id,
             "vip_subnet_id": subnet_id,
             "vip_qos_policy_id": vip_qos_policy_id,
         }
-        return self._clients.octavia().load_balancer_create(
+        lb = self._clients.octavia().load_balancer_create(
             json={"loadbalancer": args})
+        return lb["loadbalancer"]
 
     @atomic.action_timer("octavia.load_balancer_delete")
     def load_balancer_delete(self, lb_id, cascade=False):
@@ -94,7 +103,7 @@ class Octavia(service.Service):
             lb_id, json={"loadbalancer": lb_update_args})
 
     @atomic.action_timer("octavia.load_balancer_stats_show")
-    def load_balancer_stats_show(self, lb, **kwargs):
+    def load_balancer_stats_show(self, lb_id, **kwargs):
         """Shows the current statistics for a load balancer.
 
         :param string lb:
@@ -103,10 +112,10 @@ class Octavia(service.Service):
             A dict of the specified load balancer's statistics
         """
         return self._clients.octavia().load_balancer_stats_show(
-            lb["id"], **kwargs)
+            lb_id, **kwargs)
 
     @atomic.action_timer("octavia.load_balancer_failover")
-    def load_balancer_failover(self, lb):
+    def load_balancer_failover(self, lb_id):
         """Trigger load balancer failover
 
         :param string lb:
@@ -114,7 +123,7 @@ class Octavia(service.Service):
         :return:
             Response Code from the API
         """
-        return self._clients.octavia().load_balancer_failover(lb["id"])
+        return self._clients.octavia().load_balancer_failover(lb_id)
 
     @atomic.action_timer("octavia.listener_list")
     def listener_list(self, **kwargs):
@@ -207,15 +216,18 @@ class Octavia(service.Service):
 
     @atomic.action_timer("octavia.pool_create")
     def pool_create(self, lb_id, protocol, lb_algorithm,
-                    description=None, admin_state_up=True,
+                    listener_id=None, description=None,
+                    admin_state_up=True, project_id=None,
                     session_persistence=None):
         """Create a pool
 
         :param lb_id: ID of the loadbalancer
         :param protocol: protocol of the resource
         :param lb_algorithm: loadbalancing algorithm of the pool
+        :param listener_id: ID of the listener
         :param description: a human readable description of the pool
         :param admin_state_up: administrative state of the resource
+        :param project_id: project ID of the resource
         :param session_persistence: a json object specifiying the session
             persistence of the pool
         :return:
@@ -226,8 +238,10 @@ class Octavia(service.Service):
             "loadbalancer_id": lb_id,
             "protocol": protocol,
             "lb_algorithm": lb_algorithm,
+            "listener_id": listener_id,
             "description": description,
             "admin_state_up": admin_state_up,
+            "project_id": project_id,
             "session_persistence": session_persistence
         }
         pool = self._clients.octavia().pool_create(
@@ -607,23 +621,13 @@ class Octavia(service.Service):
         """
         return self._clients.octavia().amphora_list(**kwargs)
 
-    def update_loadbalancer_resource(self, lb):
-        try:
-            new_lb = self._clients.octavia().load_balancer_show(
-                lb["id"])
-        except Exception as e:
-            if getattr(e, "status_code", 400) == 404:
-                raise exceptions.GetResourceNotFound(resource=lb)
-            raise exceptions.GetResourceFailure(resource=lb, err=e)
-        return new_lb
-
     @atomic.action_timer("octavia.wait_for_loadbalancers")
     def wait_for_loadbalancer_prov_status(self, lb, prov_status="ACTIVE"):
         return utils.wait_for_status(
-            lb["loadbalancer"],
+            lb,
             ready_statuses=[prov_status],
             status_attr="provisioning_status",
-            update_resource=self.update_loadbalancer_resource,
+            update_resource=lambda lb: self.load_balancer_show(lb["id"]),
             timeout=CONF.openstack.octavia_create_loadbalancer_timeout,
             check_interval=(
                 CONF.openstack.octavia_create_loadbalancer_poll_interval)
