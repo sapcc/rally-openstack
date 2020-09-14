@@ -1,5 +1,6 @@
 ARG FROM=ubuntu:bionic
 FROM ${FROM}
+LABEL source_repository="https://github.com/sapcc/rally-openstack"
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
