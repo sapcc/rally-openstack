@@ -1,4 +1,5 @@
 ARG FROM=ubuntu:bionic
+ARG CUSTOM_PYPI_URL=""
 FROM ${FROM}
 LABEL source_repository="https://github.com/sapcc/rally-openstack"
 
@@ -13,9 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     wget -O /usr/local/share/ca-certificates/SAP_Global_Sub_CA_04.crt http://aia.pki.co.sap.com/aia/SAP%20Global%20Sub%20CA%2004.crt && \
     wget -O /usr/local/share/ca-certificates/SAP_Global_Sub_CA_05.crt http://aia.pki.co.sap.com/aia/SAP%20Global%20Sub%20CA%2005.crt && \
     wget -O /usr/local/share/ca-certificates/SAPNetCA_G2.crt http://aia.pki.co.sap.com/aia/SAPNetCA_G2.crt && \
-    update-ca-certificates && \
-    curl -sLo /usr/local/bin/kubernetes-entrypoint https://github.wdf.sap.corp/d062284/k8s-entrypoint-build/releases/download/f52d105/kubernetes-entrypoint && \
-    chmod +x /usr/local/bin/kubernetes-entrypoint
+    update-ca-certificates
 
 RUN apt-get install --yes sudo python python-pip python3.7 python3-distutils vim git-core && \
     pip install --upgrade pip && \
@@ -32,6 +31,9 @@ RUN pip install bindep &&  apt-get install --yes $(bindep -b | tr '\n' ' ')
 
 # Use the CCloud rally version that supports domain scoped admin tokens
 RUN pip install git+https://github.com/sapcc/rally.git@ccloud  --constraint upper-constraints.txt
+
+# Install kubernetes-entrypoint from custom pypi
+RUN pip install --no-cache-dir --only-binary :all: --no-compile --extra-index-url ${CUSTOM_PYPI_URL} kubernetes-entrypoint
 
 RUN pip install . --constraint upper-constraints.txt && \
     mkdir /etc/rally && \
