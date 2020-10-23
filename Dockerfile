@@ -1,5 +1,4 @@
 ARG FROM=ubuntu:bionic
-ARG CUSTOM_PYPI_URL
 FROM ${FROM}
 LABEL source_repository="https://github.com/sapcc/rally-openstack"
 
@@ -33,6 +32,7 @@ RUN pip install bindep &&  apt-get install --yes $(bindep -b | tr '\n' ' ')
 RUN pip install git+https://github.com/sapcc/rally.git@ccloud  --constraint upper-constraints.txt
 
 # Install kubernetes-entrypoint from custom pypi
+ARG CUSTOM_PYPI_URL
 RUN pip install --no-cache-dir --only-binary :all: --no-compile --extra-index-url ${CUSTOM_PYPI_URL} kubernetes-entrypoint
 
 RUN pip install . --constraint upper-constraints.txt && \
