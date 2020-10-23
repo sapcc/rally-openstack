@@ -1,5 +1,5 @@
 ARG FROM=ubuntu:bionic
-ARG CUSTOM_PYPI_URL=""
+ARG CUSTOM_PYPI_URL
 FROM ${FROM}
 LABEL source_repository="https://github.com/sapcc/rally-openstack"
 
