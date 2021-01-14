@@ -461,6 +461,73 @@ class CreateAndAttachVolume(cinder_utils.CinderBasic,
 
 @types.convert(image={"type": "glance_image"},
                flavor={"type": "nova_flavor"})
+@validation.add("restricted_parameters", param_names=["name", "display_name"],
+                subdict="create_volume_params")
+@validation.add("image_valid_on_flavor", flavor_param="flavor",
+                image_param="image")
+@validation.add("required_services", services=[consts.Service.NOVA,
+                                               consts.Service.CINDER])
+@validation.add("required_platform", platform="openstack", users=True)
+@scenario.configure(context={"cleanup@openstack": ["cinder", "nova"]},
+                    name="CinderCustomVolumes.create_and_attach_multiple_volumes",
+                    platform="openstack")
+class CreateAndAttachMultipleVolumes(
+        cinder_utils.CinderBasic,
+        nova_utils.NovaScenario
+    ):
+
+    @logging.log_deprecated_args(
+        "Use 'create_vm_params' for additional instance parameters.",
+        "0.2.0", ["kwargs"], once=True)
+    def run(self, size, image, flavor, create_volume_params=None,
+            create_vm_params=None, additional_volume_params=None,
+            **kwargs):
+        """Create a VM and attach multiple volumes to it.
+
+        Simple test to create a VM and attach multiple volumes, then
+        detach the volumes and delete volumes/VM.
+
+        :param size: volume size (integer, in GB) or
+                     dictionary, must contain two values:
+                         min - minimum size volumes will be created as;
+                         max - maximum size volumes will be created as.
+        :param image: Glance image name to use for the VM
+        :param flavor: VM flavor name
+        :param create_volume_params: optional arguments for volume creation
+        :param additional_volume_params: optional arguments for volume operation
+        :param create_vm_params: optional arguments for VM creation
+        :param kwargs: (deprecated) optional arguments for VM creation
+        """
+
+        create_volume_params = create_volume_params or {}
+        volume_params = additional_volume_params or {}
+
+        if kwargs and create_vm_params:
+            raise ValueError("You can not set both 'kwargs' "
+                             "and 'create_vm_params' attributes."
+                             "Please use 'create_vm_params'.")
+
+        create_vm_params = create_vm_params or kwargs or {}
+
+        server = self._boot_server(image, flavor, **create_vm_params)
+
+        volumes = [
+            self.cinder.create_volume(size, **create_volume_params)
+            for _ in range(volume_params["count"])
+        ]
+
+        for volume in volumes:
+            self._attach_volume(server, volume)
+        for volume in volumes:
+            self._detach_volume(server, volume)
+        for volume in volumes:
+            self.cinder.delete_volume(volume)
+
+        self._delete_server(server)
+
+
+@types.convert(image={"type": "glance_image"},
+               flavor={"type": "nova_flavor"})
 @validation.add("image_valid_on_flavor", flavor_param="flavor",
                 image_param="image")
 @validation.add("restricted_parameters", param_names=["name", "display_name"],
